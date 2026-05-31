@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-Pikes Ibiza Event Monitor
-Checks for changes in your Ibiza trip events (Jun 8-24)
-Uses Selenium for JavaScript-rendered content
+Pikes Ibiza Event Monitor - Using webdriver-manager for automatic Chrome setup
 """
 
 import json
@@ -14,28 +12,29 @@ from email.mime.multipart import MIMEMultipart
 import sys
 import traceback
 import time
+import requests
+from bs4 import BeautifulSoup
 
-# Try to import selenium, fall back to requests if not available
+# Try Selenium with webdriver-manager (handles Chrome automatically)
 try:
     from selenium import webdriver
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.webdriver.chrome.options import Options
+    from webdriver_manager.chrome import ChromeDriverManager
+    from selenium.webdriver.chrome.service import Service
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False
-    import requests
-    from bs4 import BeautifulSoup
 
-# Configuration
-PIKES_URL = "https://www.pikesibiza.com/whats-on/"
 YOUR_DATES = [
     "Jun 8", "Jun 9", "Jun 10", "Jun 11", "Jun 12", "Jun 13", "Jun 14",
     "Jun 15", "Jun 16", "Jun 17", "Jun 18", "Jun 19", "Jun 20", "Jun 21",
     "Jun 22", "Jun 23", "Jun 24"
 ]
 
+PIKES_URL = "https://www.pikesibiza.com/whats-on/"
 SNAPSHOT_FILE = "pikes_snapshot.json"
 EMAIL_RECIPIENT = os.getenv("NOTIFY_EMAIL", "")
 GMAIL_ADDRESS = os.getenv("GMAIL_ADDRESS", "")
@@ -47,49 +46,50 @@ print("🎵 PIKES IBIZA MONITOR - DEBUG MODE")
 print("="*70)
 print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
 print(f"Monitoring: Jun 8-24, 2026")
-print(f"Method: {'Selenium (JavaScript-enabled)' if SELENIUM_AVAILABLE else 'Requests (Static HTML)'}")
+print(f"Selenium Available: {'✅ YES' if SELENIUM_AVAILABLE else '❌ NO'}")
 print("\n📋 ENVIRONMENT VARIABLES:")
 print(f"  NOTIFY_EMAIL: {'✅ SET' if EMAIL_RECIPIENT else '❌ NOT SET'}")
 print(f"  GMAIL_ADDRESS: {'✅ SET' if GMAIL_ADDRESS else '❌ NOT SET'}")
 print(f"  GMAIL_PASSWORD: {'✅ SET' if GMAIL_PASSWORD else '❌ NOT SET'}")
-print(f"  DISCORD_WEBHOOK: {'✅ SET' if DISCORD_WEBHOOK else '⏭️ OPTIONAL'}")
 print("="*70)
 
-def fetch_pikes_events_selenium():
-    """Fetch Pikes events using Selenium (handles JavaScript)"""
-    print("\n🌐 Fetching Pikes website (Selenium - JavaScript enabled)...")
+def fetch_pikes_selenium():
+    """Fetch using Selenium with automatic Chrome setup"""
+    print("\n🌐 Fetching with Selenium (JavaScript enabled)...")
     try:
         options = Options()
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1920,1080")
         
-        driver = webdriver.Chrome(options=options)
+        print("   Setting up Chrome with webdriver-manager...")
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+        
+        print("   Loading Pikes website...")
         driver.get(PIKES_URL)
         
-        # Wait for page to load
-        WebDriverWait(driver, 10).until(
+        # Wait for content
+        WebDriverWait(driver, 15).until(
             EC.presence_of_all_elements_located((By.TAG_NAME, "body"))
         )
         
-        # Wait a bit for JavaScript to render
-        time.sleep(3)
-        
+        time.sleep(5)  # Wait for JS to render
         html = driver.page_source
         driver.quit()
         
-        print(f"   ✅ Fetched {len(html)} characters")
+        print(f"   ✅ Fetched {len(html)} characters with Selenium")
         return html
     
     except Exception as e:
-        print(f"   ⚠️  Selenium failed: {e}")
-        print(f"   Falling back to static HTML...")
+        print(f"   ⚠️  Selenium error: {str(e)[:100]}")
         return None
 
-def fetch_pikes_events_requests():
-    """Fetch Pikes events using requests (static HTML only)"""
-    print("\n🌐 Fetching Pikes website (Static HTML)...")
+def fetch_pikes_requests():
+    """Fallback: fetch static HTML"""
+    print("\n🌐 Fetching static HTML...")
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -103,40 +103,38 @@ def fetch_pikes_events_requests():
         return None
 
 def extract_events(html_content):
-    """Extract events from HTML content"""
+    """Extract events from HTML"""
     print(f"\n🔍 Extracting events for {len(YOUR_DATES)} days...")
     
-    from bs4 import BeautifulSoup
     soup = BeautifulSoup(html_content, 'html.parser')
+    all_text = soup.get_text()
     
     events = {}
     found_count = 0
     
-    # Get all text content
-    all_text = soup.get_text().lower()
-    
     for date_str in YOUR_DATES:
-        event_data = {
-            "date": date_str,
-            "found": date_str.lower() in all_text,
-            "details": ""
-        }
+        found = False
+        details = ""
         
-        if event_data["found"]:
+        # Check if date is in the page
+        if date_str in all_text or date_str.lower() in all_text.lower():
+            found = True
             found_count += 1
-            # Try to find context around the date
-            for element in soup.find_all(['div', 'section', 'article']):
-                if date_str.lower() in element.get_text().lower():
-                    details = element.get_text(strip=True)[:250]
-                    event_data["details"] = details
+            
+            # Get some context
+            for elem in soup.find_all(['div', 'section']):
+                if date_str.lower() in elem.get_text().lower():
+                    details = elem.get_text(strip=True)[:200]
                     break
         
-        events[date_str] = event_data
+        events[date_str] = {"found": found, "details": details}
     
     print(f"   ✅ Found events on {found_count}/{len(YOUR_DATES)} days")
     
     if found_count == 0:
-        print(f"   ⚠️  WARNING: No dates found. Website might use different format.")
+        print(f"   ⚠️  No dates found - checking raw HTML...")
+        # Check first 2000 chars for any date markers
+        print(f"   First 1000 chars: {all_text[:1000]}")
     
     return events
 
@@ -146,13 +144,11 @@ def load_snapshot():
         try:
             with open(SNAPSHOT_FILE, 'r') as f:
                 data = json.load(f)
-                print(f"✅ Loaded previous snapshot")
+                print("✅ Loaded previous snapshot")
                 return data
-        except Exception as e:
-            print(f"⚠️  Could not load snapshot: {e}")
+        except:
             return None
-    else:
-        print("📝 No previous snapshot found (first run)")
+    print("📝 No previous snapshot (first run)")
     return None
 
 def save_snapshot(events):
@@ -160,79 +156,74 @@ def save_snapshot(events):
     try:
         with open(SNAPSHOT_FILE, 'w') as f:
             json.dump(events, f, indent=2)
-        print(f"💾 Saved snapshot")
+        print("💾 Saved snapshot")
     except Exception as e:
-        print(f"❌ Error saving snapshot: {e}")
+        print(f"❌ Save error: {e}")
 
-def detect_changes(old_events, new_events):
+def detect_changes(old, new):
     """Detect changes"""
-    if not old_events:
+    if not old:
         return {"new_check": True, "changes": []}
-    
     changes = []
-    for date, new_data in new_events.items():
-        old_data = old_events.get(date, {})
+    for date, new_data in new.items():
+        old_data = old.get(date, {})
         if old_data.get("found") != new_data.get("found"):
-            changes.append({
-                "date": date,
-                "message": f"{'🆕 New' if new_data.get('found') else '⚠️ Removed'}: {date}"
-            })
-    
+            msg = f"{'🆕 NEW' if new_data['found'] else '❌ REMOVED'}: {date}"
+            changes.append({"date": date, "message": msg})
     return {"new_check": False, "changes": changes}
 
-def send_email_notification(changes):
-    """Send email"""
-    print(f"\n📧 Sending email notification...")
+def send_email(changes):
+    """Send email notification"""
+    print(f"\n📧 Sending email...")
     
     if not EMAIL_RECIPIENT or not GMAIL_ADDRESS or not GMAIL_PASSWORD:
-        print(f"   ⏭️ Credentials not configured")
+        print(f"   ⏭️ Credentials missing")
         return False
     
     try:
-        print(f"   Connecting to Gmail SMTP...")
+        print(f"   Connecting to Gmail...")
         server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15)
         server.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
         
-        message = MIMEMultipart("alternative")
-        message["Subject"] = "🎉 Pikes Events - Your Trip (Jun 8-24)"
-        message["From"] = GMAIL_ADDRESS
-        message["To"] = EMAIL_RECIPIENT
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "🎉 Pikes Ibiza Events Update"
+        msg["From"] = GMAIL_ADDRESS
+        msg["To"] = EMAIL_RECIPIENT
         
-        body = f"<html><body><h2>🎵 Pikes Update</h2><ul>"
-        for change in changes:
-            body += f"<li>{change['message']}</li>"
-        body += f"</ul></body></html>"
+        html = "<html><body><h2>🎵 Pikes Update</h2><ul>"
+        for c in changes:
+            html += f"<li>{c['message']}</li>"
+        html += "</ul></body></html>"
         
-        message.attach(MIMEText(body, "html"))
-        server.sendmail(GMAIL_ADDRESS, EMAIL_RECIPIENT, message.as_string())
+        msg.attach(MIMEText(html, "html"))
+        server.sendmail(GMAIL_ADDRESS, EMAIL_RECIPIENT, msg.as_string())
         server.quit()
         
         print(f"   ✅ Email sent!")
         return True
-    
     except Exception as e:
         print(f"   ❌ Error: {e}")
         return False
 
 def main():
     try:
-        # Try Selenium first if available
+        # Try Selenium first
         html = None
         if SELENIUM_AVAILABLE:
-            html = fetch_pikes_events_selenium()
+            html = fetch_pikes_selenium()
         
-        # Fall back to requests
+        # Fallback to requests
         if not html:
-            html = fetch_pikes_events_requests()
+            html = fetch_pikes_requests()
         
         if not html:
-            print("\n❌ Could not fetch website")
+            print("\n❌ FAILED: Could not fetch website")
             return False
         
-        current_events = extract_events(html)
-        previous_events = load_snapshot()
-        result = detect_changes(previous_events, current_events)
-        save_snapshot(current_events)
+        events = extract_events(html)
+        previous = load_snapshot()
+        result = detect_changes(previous, events)
+        save_snapshot(events)
         
         print("\n" + "="*70)
         print("📊 RESULTS:")
@@ -240,16 +231,16 @@ def main():
         
         if result["new_check"]:
             print("✅ First check - baseline established")
-            found = sum(1 for e in current_events.values() if e["found"])
+            found = sum(1 for e in events.values() if e["found"])
             print(f"   {found}/{len(YOUR_DATES)} days have events")
         elif result["changes"]:
-            print(f"⚠️ Changes detected!")
-            for change in result["changes"]:
-                print(f"  {change['message']}")
-            send_email_notification(result["changes"])
+            print(f"⚠️ {len(result['changes'])} change(s) detected!")
+            for c in result["changes"]:
+                print(f"  {c['message']}")
+            send_email(result["changes"])
         else:
-            print("✅ No changes")
-            found = sum(1 for e in current_events.values() if e["found"])
+            print("✅ No changes detected")
+            found = sum(1 for e in events.values() if e["found"])
             print(f"   {found}/{len(YOUR_DATES)} days have events")
         
         print("="*70)
