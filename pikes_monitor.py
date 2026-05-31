@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Pikes Ibiza Event Monitor
-Checks for changes in your scheduled events every 48 hours
+Checks for changes in your Ibiza trip events (Jun 8-24)
 Sends notifications via email or Discord
 """
 
@@ -17,12 +17,13 @@ from email.mime.multipart import MIMEMultipart
 
 # Configuration
 PIKES_URL = "https://www.pikesibiza.com/whats-on/"
-YOUR_DATES = {
-    "Jun 8": "Monday - Arrival (Mondays)",
-    "Jun 10": "Wednesday - Pikes Sessions",
-    "Jun 11": "Thursday - Flash x Homoelectric",
-    "Jun 13": "Saturday - Birthday (Pikes House Party)"
-}
+TRIP_START = "Jun 8"
+TRIP_END = "Jun 24"
+YOUR_DATES = [
+    "Jun 8", "Jun 9", "Jun 10", "Jun 11", "Jun 12", "Jun 13", "Jun 14",
+    "Jun 15", "Jun 16", "Jun 17", "Jun 18", "Jun 19", "Jun 20", "Jun 21",
+    "Jun 22", "Jun 23", "Jun 24"
+]
 
 SNAPSHOT_FILE = "pikes_snapshot.json"
 EMAIL_RECIPIENT = os.getenv("NOTIFY_EMAIL", "your-email@gmail.com")
@@ -42,28 +43,26 @@ def fetch_pikes_events():
         return None
 
 def extract_events(html_content):
-    """Extract events for your dates from HTML"""
+    """Extract events for your trip dates from HTML"""
     soup = BeautifulSoup(html_content, 'html.parser')
     events = {}
     
-    for date_str, label in YOUR_DATES.items():
-        # Find event section for this date
-        date_pattern = date_str.replace(" ", "-").lower()
+    for date_str in YOUR_DATES:
         event_data = {
-            "label": label,
+            "date": date_str,
             "found": False,
             "details": ""
         }
         
         # Look for event headers containing the date
-        for h3 in soup.find_all('h3'):
-            text = h3.get_text(strip=True)
-            if date_str in text or date_pattern in h3.get('id', '').lower():
+        for element in soup.find_all(['h2', 'h3', 'div']):
+            text = element.get_text(strip=True)
+            if date_str in text:
                 event_data["found"] = True
-                # Get event details from nearby elements
-                parent = h3.find_parent(['div', 'article'])
+                # Get surrounding context
+                parent = element.find_parent(['div', 'article', 'section'])
                 if parent:
-                    details = parent.get_text(strip=True)[:200]
+                    details = parent.get_text(strip=True)[:250]
                     event_data["details"] = details
                 break
         
@@ -101,8 +100,15 @@ def detect_changes(old_events, new_events):
             changes.append({
                 "type": "removed",
                 "date": date,
-                "label": new_data["label"],
-                "message": f"⚠️ Event removed: {new_data['label']}"
+                "message": f"⚠️ Event removed on {date}"
+            })
+        
+        # Check if event is now found but wasn't before
+        if not old_data.get("found") and new_data.get("found"):
+            changes.append({
+                "type": "new",
+                "date": date,
+                "message": f"🆕 New event found on {date}"
             })
         
         # Check if details changed
@@ -111,9 +117,7 @@ def detect_changes(old_events, new_events):
                 changes.append({
                     "type": "updated",
                     "date": date,
-                    "label": new_data["label"],
-                    "message": f"🔄 Event updated: {new_data['label']}",
-                    "new_details": new_data["details"][:100]
+                    "message": f"🔄 Event updated on {date}"
                 })
     
     return {"new_check": False, "changes": changes}
@@ -125,7 +129,6 @@ def send_email_notification(changes):
         return
     
     try:
-        # You'll need to set up Gmail app password
         smtp_server = "smtp.gmail.com"
         sender_email = os.getenv("GMAIL_ADDRESS")
         sender_password = os.getenv("GMAIL_PASSWORD")
@@ -135,27 +138,31 @@ def send_email_notification(changes):
             return
         
         message = MIMEMultipart("alternative")
-        message["Subject"] = "🎉 Pikes Ibiza Event Update"
+        message["Subject"] = "🎉 Pikes Ibiza Events - Your Trip (Jun 8-24)"
         message["From"] = sender_email
         message["To"] = EMAIL_RECIPIENT
         
-        # Create email body
         body = f"""
         <html>
           <body>
-            <h2>Pikes Ibiza Events - Changes Detected</h2>
-            <p><strong>Check Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <h2>🎵 Pikes Ibiza Events Update</h2>
+            <p><strong>Your Trip:</strong> Jun 8-24, 2026</p>
+            <p><strong>Check Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
             
-            <h3>Updates:</h3>
+            <h3>Changes Detected:</h3>
             <ul>
         """
         
         for change in changes:
-            body += f"<li><strong>{change['date']}</strong> - {change['message']}</li>"
+            body += f"<li>{change['message']}</li>"
         
         body += """
             </ul>
-            <p><a href="https://www.pikesibiza.com/whats-on/">View Full Schedule</a></p>
+            <p><a href="https://www.pikesibiza.com/whats-on/">View Full Schedule →</a></p>
+            <hr>
+            <p style="font-size: 12px; color: #666;">
+              Monitoring Pikes events for your entire Ibiza trip (Jun 8-24)
+            </p>
           </body>
         </html>
         """
@@ -178,7 +185,8 @@ def send_discord_notification(changes):
     
     try:
         embed = {
-            "title": "🎉 Pikes Ibiza Event Update",
+            "title": "🎵 Pikes Ibiza Events Update",
+            "description": f"Your trip: Jun 8-24, 2026",
             "color": 16711680,
             "timestamp": datetime.now().isoformat(),
             "fields": []
@@ -186,7 +194,7 @@ def send_discord_notification(changes):
         
         for change in changes:
             embed["fields"].append({
-                "name": f"{change['date']} - {change['label']}",
+                "name": change['date'],
                 "value": change['message'],
                 "inline": False
             })
@@ -201,14 +209,14 @@ def send_discord_notification(changes):
 
 def main():
     """Main monitoring function"""
-    print(f"\n🔍 Checking Pikes Ibiza... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"\n🔍 Checking Pikes Ibiza (Jun 8-24)... {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
     
     # Fetch current events
     html = fetch_pikes_events()
     if not html:
         return
     
-    # Extract events for your dates
+    # Extract events for your trip dates
     current_events = extract_events(html)
     
     # Load previous snapshot
@@ -223,17 +231,14 @@ def main():
     # Report status
     if result["new_check"]:
         print("✅ First check - baseline established")
-        print("\nEvents monitored:")
-        for date, data in current_events.items():
-            status = "✅ Found" if data["found"] else "❌ Not found"
-            print(f"  {date}: {data['label']} - {status}")
+        print(f"\n📅 Monitoring {len(YOUR_DATES)} days of your trip:")
+        found_count = sum(1 for e in current_events.values() if e["found"])
+        print(f"   {found_count}/{len(YOUR_DATES)} days have events listed")
     
     elif result["changes"]:
         print(f"\n⚠️ {len(result['changes'])} change(s) detected!\n")
         for change in result["changes"]:
             print(f"  {change['message']}")
-            if "new_details" in change:
-                print(f"    Details: {change['new_details']}...")
         
         # Send notifications
         send_email_notification(result["changes"])
@@ -241,10 +246,8 @@ def main():
     
     else:
         print("✅ No changes detected")
-        print("\nCurrent status:")
-        for date, data in current_events.items():
-            status = "✅ Found" if data["found"] else "❌ Not found"
-            print(f"  {date}: {data['label']} - {status}")
+        found_count = sum(1 for e in current_events.values() if e["found"])
+        print(f"   {found_count}/{len(YOUR_DATES)} days have events")
 
 if __name__ == "__main__":
     main()
