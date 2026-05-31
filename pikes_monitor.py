@@ -203,7 +203,7 @@ def format_changes(changes):
     return html
 
 
-def send_email(changes, current_events, previous_events):
+def send_email(changes, current_events=None, previous_events=None):
     """Send email showing CURRENT + CHANGES"""
     print(f"\n📧 Sending email...")
     if not EMAIL_RECIPIENT or not GMAIL_ADDRESS or not GMAIL_PASSWORD:
@@ -258,7 +258,7 @@ def main():
             print(f"⚠️ Changes detected:")
             for c in result["changes"]:
                 print(f"  {c['message']}")
-            send_email(result["changes"])
+            send_email(result["changes"], events, previous)
         else:
             print("✅ No changes")
             found = sum(1 for e in events.values() if e["found"])
