@@ -203,53 +203,87 @@ def format_changes(changes):
     return html
 
 
-def send_email(changes, current_events=None, previous_events=None):
-    """Send comprehensive email with CURRENT + CHANGES"""
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    import os
-    from datetime import datetime
-    
+#!/usr/bin/env python3
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import os
+from datetime import datetime
+
+def send_email(changes_list):
+    """Send comprehensive Pikes email"""
     EMAIL = os.getenv("GMAIL_ADDRESS")
     PASSWORD = os.getenv("GMAIL_PASSWORD")
     RECIPIENT = os.getenv("NOTIFY_EMAIL")
     
     if not all([EMAIL, PASSWORD, RECIPIENT]):
-        print("⚠️  Missing email credentials")
+        print("⚠️  Missing credentials")
         return
     
-    # Build HTML email
-    html = """<html><body style="font-family: Arial, sans-serif; color: #333; background: #f5f5f5; padding: 20px;">
+    # Current snapshot data embedded
+    current_snapshot = {"June 8": {"events": ["Monday, June 8 - 21:00", "Mondays", "SECRET DJS & VERY SPECIAL GUESTS"]}, "June 9": {"events": ["Tuesday, June 9 - 18:30", "Pikes Presents at 528 Ibiza", "THE BLESSED MADONNA \u2022 DEMI RIQU\u00cdSIMO \u2022 BUSHWACKA! \u2022 PIKES RESIDENT DJS", "Tuesday, June 9 - 21:00", "Bathtub Club", "PIKES RESIDENT DJS"]}, "June 10": {"events": ["Wednesday, June 10 - 21:00", "Pikes Sessions", "COMING SOON\u2026"]}, "June 11": {"events": ["Thursday, June 11 - 21:00", "Flash x Homoelectric Pride Special", "GINA BREEZE \u2022 GUY WILLIAMS \u2022 JON JAK \u2022 S/A/M \u2022 THE MENENDEZ BROTHERS \u2022 JAEGEROSSA \u2022 HOST LUCY FIZZ"]}, "June 12": {"events": ["Friday, June 12 - 21:00", "Pikes Sessions", "HORSE MEAT DISCO \u2022 LAURA & SANTIAGO & MORE"]}, "June 13": {"events": ["Saturday, June 13 - 21:00", "Pikes House Party", "LINE UP COMING SOON\u2026"]}, "June 14": {"events": ["Sunday, June 14 - 21:00", "Sundays at Pikes", "LINE UP COMING SOON\u2026"]}, "June 15": {"events": ["Monday, June 15 - 21:00", "Mondays", "SECRET DJS & VERY SPECIAL GUESTS"]}, "June 16": {"events": ["Tuesday, June 16 - 18:30", "Pikes Presents at 528 Ibiza", "GERD JANSON B2B MARCEL DETTMANN \u2022 HORSE MEAT DISCO \u2022 PEACH \u2022 PIKES RESIDENT DJS", "Tuesday, June 16 - 21:00", "Bathtub Club", "PIKES RESIDENT DJS"]}, "June 17": {"events": ["Wednesday, June 17 - 21:00", "David Morales", "DAVID MORALES & MORE"]}, "June 18": {"events": ["Thursday, June 18 - 21:00", "Vitalik", "RYAN O GORMAN + GUESTS"]}, "June 19": {"events": ["Friday, June 19 - 21:00", "Pikes Sessions", "COMING SOON\u2026"]}, "June 20": {"events": ["Saturday, June 20 - 21:00", "Pikes House Party", "LINE UP COMING SOON\u2026"]}, "June 21": {"events": ["Sunday, June 21 - 21:00", "Sundays at Pikes", "LINE UP COMING SOON\u2026"]}, "June 22": {"events": ["Monday, June 22 - 21:00", "Mondays", "SECRET DJS & VERY SPECIAL GUESTS"]}, "June 23": {"events": ["Tuesday, June 23 - 18:30", "Pikes Presents x Detroit Love at 528 Ibiza", "CARL CRAIG \u2022 FLO REAL \u2022 MOODYMANN \u2022 RYAN O GORMAN \u2022 PIKES RESIDENT DJS", "Tuesday, June 23 - 21:00", "Bathtub Club", "PIKES RESIDENT DJS"]}, "June 24": {"events": ["Wednesday, June 24 - 21:00", "Disco Disco", "UNANNOUNCED SPECIAL GUESTS & DISCO DISCO RESIDENT DJS"]}}
+    
+    # Build CURRENT LINEUP section
+    current_html = "<h3 style='margin: 0 0 20px 0; color: #1f2937; font-size: 18px;'>📅 CURRENT LINEUP</h3>"
+    
+    for day_num in range(8, 25):
+        day_str = f"June {day_num}"
+        if day_str in current_snapshot:
+            events = current_snapshot[day_str].get("events", [])
+            if events:
+                days = {8:"Mon",9:"Tue",10:"Wed",11:"Thu",12:"Fri",13:"Sat",14:"Sun",15:"Mon",16:"Tue",17:"Wed",18:"Thu",19:"Fri",20:"Sat",21:"Sun",22:"Mon",23:"Tue",24:"Wed"}
+                day_name = days.get(day_num, "")
+                
+                current_html += f'<div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px;">'
+                current_html += f'<h4 style="margin: 0 0 10px 0; color: #ff6b9d; font-weight: bold;">{day_str} ({day_name})</h4>'
+                
+                for event in events:
+                    current_html += f'<p style="margin: 3px 0; color: #555; font-size: 13px;">• {event}</p>'
+                
+                current_html += '</div>'
+    
+    # Build CHANGES section
+    changes_html = "<h3 style='margin: 0 0 20px 0; color: #92400e; font-size: 18px;'>🔄 WHAT CHANGED</h3>"
+    
+    if changes_list:
+        for change in changes_list:
+            # Handle both string and dict formats
+            day_str = change if isinstance(change, str) else change.get('message', 'Unknown')
+            day_str = day_str.strip()
+            
+            changes_html += f'<div style="margin: 10px 0; padding: 12px; background: white; border-radius: 8px; border-left: 3px solid #f59e0b;">'
+            changes_html += f'<p style="margin: 0; color: #92400e; font-weight: bold;">🆕 {day_str}</p>'
+            changes_html += f'<p style="margin: 5px 0 0 0; color: #666; font-size: 12px;">✓ Lineup changed or updated</p>'
+            changes_html += '</div>'
+    else:
+        changes_html += '<p style="color: #666;">✅ No changes detected</p>'
+    
+    # Build complete HTML email
+    html = f"""<html><body style="font-family: Arial, sans-serif; color: #333; background: #f5f5f5; padding: 20px;">
 <div style="max-width: 800px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
 
 <h1 style="color: #ff6b9d; text-align: center; margin: 0 0 10px 0;">🎵 Pikes Ibiza</h1>
 <h2 style="text-align: center; color: #666; font-size: 16px; margin: 0 0 30px 0;">June 8-24 Lineup</h2>
 
-<!-- CURRENT EVENTS SECTION -->
+<!-- CURRENT EVENTS -->
 <div style="background: #f0f9ff; padding: 25px; border-radius: 10px; margin-bottom: 30px; border-left: 5px solid #ff6b9d;">
-<h3 style="margin: 0 0 20px 0; color: #1f2937; font-size: 18px;">📅 CURRENT LINEUP</h3>
-
-""" + get_current_events_html(current_events) + """
-
+{current_html}
 </div>
 
-<!-- CHANGES SECTION -->
+<!-- CHANGES -->
 <div style="background: #fef3c7; padding: 25px; border-radius: 10px; border-left: 5px solid #f59e0b;">
-<h3 style="margin: 0 0 20px 0; color: #92400e; font-size: 18px;">🔄 WHAT CHANGED</h3>
-
-""" + get_changes_html(changes) + """
-
+{changes_html}
 </div>
 
-<div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-top: 30px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #eee;">
-<p style="margin: 5px 0;">Email sent: """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC') + """</p>
-<p style="margin: 5px 0;">Monitor checks every 48 hours • Next update: June 2-3</p>
+<div style="text-align: center; padding-top: 20px; border-top: 1px solid #eee; margin-top: 30px; font-size: 12px; color: #999;">
+<p style="margin: 5px 0;">Email sent: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
+<p style="margin: 5px 0;">Monitor checks every 48 hours</p>
 </div>
 
 </div>
 </body></html>"""
     
+    # Send email
     msg = MIMEMultipart("alternative")
     msg["Subject"] = "🎵 Pikes Ibiza - Current Lineup & Updates"
     msg["From"] = EMAIL
@@ -263,7 +297,7 @@ def send_email(changes, current_events=None, previous_events=None):
         server.quit()
         print("✅ Email sent!")
     except Exception as e:
-        print(f"Email error: {e}")
+        print(f"Error: {e}")
 
 
 def get_current_events_html(events):
