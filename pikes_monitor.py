@@ -377,7 +377,7 @@ def main():
             print(f"⚠️ Changes detected:")
             for c in result["changes"]:
                 print(f"  {c['message']}")
-            send_email(result["changes"], events, previous)
+            send_email(result["changes"])
         else:
             print("✅ No changes")
             found = sum(1 for e in events.values() if e["found"])
