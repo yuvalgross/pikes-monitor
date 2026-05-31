@@ -177,7 +177,34 @@ def detect_changes(old, new):
             changes.append({"message": msg})
     return {"new_check": False, "changes": changes}
 
-def send_email(changes):
+
+def format_current_events(events):
+    """Format current events for email"""
+    html = ""
+    for day in sorted(events.keys(), key=lambda x: int(x.split()[-1])):
+        day_events = events[day].get("events", [])
+        if day_events:
+            html += f'<p style="margin: 10px 0; color: #666;"><strong>{day}</strong></p>'
+            for event in day_events[:3]:
+                html += f'<p style="margin: 5px 0 5px 20px; color: #666; font-size: 13px;">• {event}</p>'
+            if len(day_events) > 3:
+                html += f'<p style="margin: 5px 0 5px 20px; color: #999; font-size: 12px;">... and {len(day_events)-3} more</p>'
+    return html if html else '<p style="color: #666;">No changes yet</p>'
+
+def format_changes(changes):
+    """Format changes for email"""
+    if not changes:
+        return '<p style="color: #666;">✅ No changes detected</p>'
+    html = ""
+    for day, change_list in changes.items():
+        html += f'<p style="margin: 10px 0; color: #92400e;"><strong>🆕 {day}</strong></p>'
+        for change in change_list:
+            html += f'<p style="margin: 5px 0 5px 20px; color: #666; font-size: 13px;">• {change}</p>'
+    return html
+
+
+def send_email(changes, current_events, previous_events):
+    """Send email showing CURRENT + CHANGES"""
     print(f"\n📧 Sending email...")
     if not EMAIL_RECIPIENT or not GMAIL_ADDRESS or not GMAIL_PASSWORD:
         print(f"   ⏭️  Not configured")
