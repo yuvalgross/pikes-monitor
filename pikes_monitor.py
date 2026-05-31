@@ -14,6 +14,8 @@ from pathlib import Path
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import sys
+import traceback
 
 # Configuration
 PIKES_URL = "https://www.pikesibiza.com/whats-on/"
@@ -26,24 +28,42 @@ YOUR_DATES = [
 ]
 
 SNAPSHOT_FILE = "pikes_snapshot.json"
-EMAIL_RECIPIENT = os.getenv("NOTIFY_EMAIL", "your-email@gmail.com")
+EMAIL_RECIPIENT = os.getenv("NOTIFY_EMAIL", "")
+GMAIL_ADDRESS = os.getenv("GMAIL_ADDRESS", "")
+GMAIL_PASSWORD = os.getenv("GMAIL_PASSWORD", "")
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK", "")
+
+print("\n" + "="*70)
+print("🎵 PIKES IBIZA MONITOR - DEBUG MODE")
+print("="*70)
+print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+print(f"Monitoring dates: {TRIP_START} to {TRIP_END}")
+print("\n📋 ENVIRONMENT VARIABLES:")
+print(f"  NOTIFY_EMAIL: {EMAIL_RECIPIENT if EMAIL_RECIPIENT else '❌ NOT SET'}")
+print(f"  GMAIL_ADDRESS: {GMAIL_ADDRESS if GMAIL_ADDRESS else '❌ NOT SET'}")
+print(f"  GMAIL_PASSWORD: {'✅ SET' if GMAIL_PASSWORD else '❌ NOT SET'}")
+print(f"  DISCORD_WEBHOOK: {'✅ SET' if DISCORD_WEBHOOK else '⏭️ OPTIONAL'}")
+print("="*70)
 
 def fetch_pikes_events():
     """Fetch current Pikes events"""
+    print("\n🌐 Fetching Pikes website...")
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         response = requests.get(PIKES_URL, headers=headers, timeout=10)
         response.raise_for_status()
+        print(f"   ✅ Fetched {len(response.text)} characters")
         return response.text
     except Exception as e:
-        print(f"❌ Error fetching Pikes: {e}")
+        print(f"   ❌ Error fetching Pikes: {e}")
+        traceback.print_exc()
         return None
 
 def extract_events(html_content):
     """Extract events for your trip dates from HTML"""
+    print(f"\n🔍 Extracting events for {len(YOUR_DATES)} days...")
     soup = BeautifulSoup(html_content, 'html.parser')
     events = {}
     
@@ -54,12 +74,10 @@ def extract_events(html_content):
             "details": ""
         }
         
-        # Look for event headers containing the date
         for element in soup.find_all(['h2', 'h3', 'div']):
             text = element.get_text(strip=True)
             if date_str in text:
                 event_data["found"] = True
-                # Get surrounding context
                 parent = element.find_parent(['div', 'article', 'section'])
                 if parent:
                     details = parent.get_text(strip=True)[:250]
@@ -68,6 +86,8 @@ def extract_events(html_content):
         
         events[date_str] = event_data
     
+    found_count = sum(1 for e in events.values() if e["found"])
+    print(f"   ✅ Found events on {found_count}/{len(YOUR_DATES)} days")
     return events
 
 def load_snapshot():
@@ -75,15 +95,24 @@ def load_snapshot():
     if os.path.exists(SNAPSHOT_FILE):
         try:
             with open(SNAPSHOT_FILE, 'r') as f:
-                return json.load(f)
-        except:
+                data = json.load(f)
+                print(f"✅ Loaded previous snapshot ({len(data)} dates)")
+                return data
+        except Exception as e:
+            print(f"⚠️ Could not load snapshot: {e}")
             return None
+    else:
+        print("📝 No previous snapshot found (first run)")
     return None
 
 def save_snapshot(events):
     """Save current events as snapshot"""
-    with open(SNAPSHOT_FILE, 'w') as f:
-        json.dump(events, f, indent=2)
+    try:
+        with open(SNAPSHOT_FILE, 'w') as f:
+            json.dump(events, f, indent=2)
+        print(f"💾 Saved snapshot ({len(events)} dates)")
+    except Exception as e:
+        print(f"❌ Error saving snapshot: {e}")
 
 def detect_changes(old_events, new_events):
     """Compare old and new events, return changes"""
@@ -95,7 +124,6 @@ def detect_changes(old_events, new_events):
     for date, new_data in new_events.items():
         old_data = old_events.get(date, {})
         
-        # Check if event was found before but not now
         if old_data.get("found") and not new_data.get("found"):
             changes.append({
                 "type": "removed",
@@ -103,7 +131,6 @@ def detect_changes(old_events, new_events):
                 "message": f"⚠️ Event removed on {date}"
             })
         
-        # Check if event is now found but wasn't before
         if not old_data.get("found") and new_data.get("found"):
             changes.append({
                 "type": "new",
@@ -111,7 +138,6 @@ def detect_changes(old_events, new_events):
                 "message": f"🆕 New event found on {date}"
             })
         
-        # Check if details changed
         if old_data.get("details") != new_data.get("details"):
             if new_data.get("details") and old_data.get("details"):
                 changes.append({
@@ -124,22 +150,30 @@ def detect_changes(old_events, new_events):
 
 def send_email_notification(changes):
     """Send email notification of changes"""
+    print(f"\n📧 Sending email notification...")
+    
     if not EMAIL_RECIPIENT or EMAIL_RECIPIENT == "your-email@gmail.com":
-        print("⏭️ Email not configured. Set NOTIFY_EMAIL env var")
-        return
+        print(f"   ⏭️ NOTIFY_EMAIL not configured")
+        return False
+    
+    if not GMAIL_ADDRESS or not GMAIL_PASSWORD:
+        print(f"   ❌ Gmail credentials missing")
+        print(f"      GMAIL_ADDRESS: {GMAIL_ADDRESS if GMAIL_ADDRESS else '❌ NOT SET'}")
+        print(f"      GMAIL_PASSWORD: {'✅ SET' if GMAIL_PASSWORD else '❌ NOT SET'}")
+        return False
     
     try:
-        smtp_server = "smtp.gmail.com"
-        sender_email = os.getenv("GMAIL_ADDRESS")
-        sender_password = os.getenv("GMAIL_PASSWORD")
+        print(f"   Connecting to smtp.gmail.com:465...")
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15)
+        print(f"   ✅ Connected")
         
-        if not sender_email or not sender_password:
-            print("⏭️ Gmail credentials not set")
-            return
+        print(f"   Logging in as {GMAIL_ADDRESS}...")
+        server.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
+        print(f"   ✅ Authenticated")
         
         message = MIMEMultipart("alternative")
         message["Subject"] = "🎉 Pikes Ibiza Events - Your Trip (Jun 8-24)"
-        message["From"] = sender_email
+        message["From"] = GMAIL_ADDRESS
         message["To"] = EMAIL_RECIPIENT
         
         body = f"""
@@ -169,19 +203,26 @@ def send_email_notification(changes):
         
         message.attach(MIMEText(body, "html"))
         
-        with smtplib.SMTP_SSL(smtp_server, 465) as server:
-            server.login(sender_email, sender_password)
-            server.sendmail(sender_email, EMAIL_RECIPIENT, message.as_string())
+        print(f"   Sending to {EMAIL_RECIPIENT}...")
+        server.sendmail(GMAIL_ADDRESS, EMAIL_RECIPIENT, message.as_string())
+        server.quit()
         
-        print(f"✉️ Email sent to {EMAIL_RECIPIENT}")
+        print(f"   ✅ Email sent successfully!")
+        return True
     
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"   ❌ Authentication failed: {e}")
+        print(f"      Check Gmail app password")
+        return False
     except Exception as e:
-        print(f"❌ Email error: {e}")
+        print(f"   ❌ Email error: {e}")
+        traceback.print_exc()
+        return False
 
 def send_discord_notification(changes):
     """Send Discord webhook notification"""
     if not DISCORD_WEBHOOK:
-        return
+        return False
     
     try:
         embed = {
@@ -200,54 +241,70 @@ def send_discord_notification(changes):
             })
         
         payload = {"embeds": [embed]}
-        
         requests.post(DISCORD_WEBHOOK, json=payload)
-        print("✅ Discord notification sent")
+        print(f"   ✅ Discord notification sent")
+        return True
     
     except Exception as e:
-        print(f"❌ Discord error: {e}")
+        print(f"   ❌ Discord error: {e}")
+        return False
 
 def main():
     """Main monitoring function"""
-    print(f"\n🔍 Checking Pikes Ibiza (Jun 8-24)... {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    
-    # Fetch current events
-    html = fetch_pikes_events()
-    if not html:
-        return
-    
-    # Extract events for your trip dates
-    current_events = extract_events(html)
-    
-    # Load previous snapshot
-    previous_events = load_snapshot()
-    
-    # Detect changes
-    result = detect_changes(previous_events, current_events)
-    
-    # Save current snapshot
-    save_snapshot(current_events)
-    
-    # Report status
-    if result["new_check"]:
-        print("✅ First check - baseline established")
-        print(f"\n📅 Monitoring {len(YOUR_DATES)} days of your trip:")
-        found_count = sum(1 for e in current_events.values() if e["found"])
-        print(f"   {found_count}/{len(YOUR_DATES)} days have events listed")
-    
-    elif result["changes"]:
-        print(f"\n⚠️ {len(result['changes'])} change(s) detected!\n")
-        for change in result["changes"]:
-            print(f"  {change['message']}")
+    try:
+        # Fetch current events
+        html = fetch_pikes_events()
+        if not html:
+            print("\n❌ FAILED: Could not fetch Pikes website")
+            return False
         
-        # Send notifications
-        send_email_notification(result["changes"])
-        send_discord_notification(result["changes"])
+        # Extract events for your trip dates
+        current_events = extract_events(html)
+        
+        # Load previous snapshot
+        previous_events = load_snapshot()
+        
+        # Detect changes
+        result = detect_changes(previous_events, current_events)
+        
+        # Save current snapshot
+        save_snapshot(current_events)
+        
+        # Report status
+        print("\n" + "="*70)
+        print("📊 RESULTS:")
+        print("="*70)
+        
+        if result["new_check"]:
+            print("✅ First check - baseline established")
+            found_count = sum(1 for e in current_events.values() if e["found"])
+            print(f"   {found_count}/{len(YOUR_DATES)} days have events")
+        
+        elif result["changes"]:
+            print(f"⚠️ {len(result['changes'])} change(s) detected!\n")
+            for change in result["changes"]:
+                print(f"  {change['message']}")
+            
+            # Send notifications
+            send_email_notification(result["changes"])
+            send_discord_notification(result["changes"])
+        
+        else:
+            print("✅ No changes detected")
+            found_count = sum(1 for e in current_events.values() if e["found"])
+            print(f"   {found_count}/{len(YOUR_DATES)} days have events")
+        
+        print("="*70)
+        print(f"End time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        print("="*70 + "\n")
+        
+        return True
     
-    else:
-        print("✅ No changes detected")
-        found_count = sum(1 for e in current_events.values() if e["found"])
-        print(f"   {found_count}/{len(YOUR_DATES)} days have events")
+    except Exception as e:
+        print(f"\n❌ CRITICAL ERROR: {e}")
+        traceback.print_exc()
+        return False
 
 if __name__ == "__main__":
-    main()
+    success = main()
+    sys.exit(0 if success else 1)
