@@ -204,34 +204,109 @@ def format_changes(changes):
 
 
 def send_email(changes, current_events=None, previous_events=None):
-    """Send email showing CURRENT + CHANGES"""
-    print(f"\n📧 Sending email...")
-    if not EMAIL_RECIPIENT or not GMAIL_ADDRESS or not GMAIL_PASSWORD:
-        print(f"   ⏭️  Not configured")
-        return False
+    """Send comprehensive email with CURRENT + CHANGES"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import os
+    from datetime import datetime
+    
+    EMAIL = os.getenv("GMAIL_ADDRESS")
+    PASSWORD = os.getenv("GMAIL_PASSWORD")
+    RECIPIENT = os.getenv("NOTIFY_EMAIL")
+    
+    if not all([EMAIL, PASSWORD, RECIPIENT]):
+        print("⚠️  Missing email credentials")
+        return
+    
+    # Build HTML email
+    html = """<html><body style="font-family: Arial, sans-serif; color: #333; background: #f5f5f5; padding: 20px;">
+<div style="max-width: 800px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+
+<h1 style="color: #ff6b9d; text-align: center; margin: 0 0 10px 0;">🎵 Pikes Ibiza</h1>
+<h2 style="text-align: center; color: #666; font-size: 16px; margin: 0 0 30px 0;">June 8-24 Lineup</h2>
+
+<!-- CURRENT EVENTS SECTION -->
+<div style="background: #f0f9ff; padding: 25px; border-radius: 10px; margin-bottom: 30px; border-left: 5px solid #ff6b9d;">
+<h3 style="margin: 0 0 20px 0; color: #1f2937; font-size: 18px;">📅 CURRENT LINEUP</h3>
+
+""" + get_current_events_html(current_events) + """
+
+</div>
+
+<!-- CHANGES SECTION -->
+<div style="background: #fef3c7; padding: 25px; border-radius: 10px; border-left: 5px solid #f59e0b;">
+<h3 style="margin: 0 0 20px 0; color: #92400e; font-size: 18px;">🔄 WHAT CHANGED</h3>
+
+""" + get_changes_html(changes) + """
+
+</div>
+
+<div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-top: 30px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #eee;">
+<p style="margin: 5px 0;">Email sent: """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC') + """</p>
+<p style="margin: 5px 0;">Monitor checks every 48 hours • Next update: June 2-3</p>
+</div>
+
+</div>
+</body></html>"""
+    
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "🎵 Pikes Ibiza - Current Lineup & Updates"
+    msg["From"] = EMAIL
+    msg["To"] = RECIPIENT
+    msg.attach(MIMEText(html, "html"))
+    
     try:
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15)
-        server.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
-        
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "🎉 Pikes Events Update"
-        msg["From"] = GMAIL_ADDRESS
-        msg["To"] = EMAIL_RECIPIENT
-        
-        html = "<html><body><h2>🎵 Pikes Update</h2><ul>"
-        for c in changes:
-            html += f"<li>{c['message']}</li>"
-        html += "</ul></body></html>"
-        
-        msg.attach(MIMEText(html, "html"))
-        server.sendmail(GMAIL_ADDRESS, EMAIL_RECIPIENT, msg.as_string())
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10)
+        server.login(EMAIL, PASSWORD)
+        server.sendmail(EMAIL, RECIPIENT, msg.as_string())
         server.quit()
-        
-        print(f"   ✅ Sent!")
-        return True
+        print("✅ Email sent!")
     except Exception as e:
-        print(f"   ❌ Error: {e}")
-        return False
+        print(f"Email error: {e}")
+
+
+def get_current_events_html(events):
+    """Format current events for HTML"""
+    if not events:
+        return "<p style='color: #666;'>Loading events...</p>"
+    
+    html = ""
+    for day_num in range(8, 25):
+        day_str = f"June {day_num}"
+        if day_str in events:
+            day_events = events[day_str].get("events", [])
+            if day_events:
+                days = {8:"Mon",9:"Tue",10:"Wed",11:"Thu",12:"Fri",13:"Sat",14:"Sun",15:"Mon",16:"Tue",17:"Wed",18:"Thu",19:"Fri",20:"Sat",21:"Sun",22:"Mon",23:"Tue",24:"Wed"}
+                day_name = days.get(day_num, "")
+                
+                html += f'<div style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px;">'
+                html += f'<h4 style="margin: 0 0 10px 0; color: #1f2937;">📅 {day_str} ({day_name})</h4>'
+                
+                for event in day_events:
+                    html += f'<p style="margin: 5px 0; color: #555; font-size: 13px; line-height: 1.5;">• {event}</p>'
+                
+                html += '</div>'
+    
+    return html if html else "<p style='color: #666;'>No events scheduled</p>"
+
+
+def get_changes_html(changes):
+    """Format changes for HTML"""
+    if not changes:
+        return "<p style='color: #666;'>✅ No changes detected</p>"
+    
+    html = ""
+    for day, items in changes.items():
+        html += f'<div style="margin-bottom: 15px; padding: 12px; background: white; border-radius: 8px;">'
+        html += f'<h4 style="margin: 0 0 8px 0; color: #92400e;">🆕 {day}</h4>'
+        
+        for item in items:
+            html += f'<p style="margin: 5px 0; color: #856404; font-size: 13px;">✓ {item}</p>'
+        
+        html += '</div>'
+    
+    return html
 
 def main():
     try:
