@@ -297,14 +297,24 @@ def get_changes_html(changes):
         return "<p style='color: #666;'>✅ No changes detected</p>"
     
     html = ""
-    for day, items in changes.items():
-        html += f'<div style="margin-bottom: 15px; padding: 12px; background: white; border-radius: 8px;">'
-        html += f'<h4 style="margin: 0 0 8px 0; color: #92400e;">🆕 {day}</h4>'
-        
-        for item in items:
-            html += f'<p style="margin: 5px 0; color: #856404; font-size: 13px;">✓ {item}</p>'
-        
-        html += '</div>'
+    
+    # Handle list format (changes is a list of day strings)
+    if isinstance(changes, list):
+        for day in changes:
+            html += f'<div style="margin-bottom: 15px; padding: 12px; background: white; border-radius: 8px;">'
+            html += f'<h4 style="margin: 0 0 8px 0; color: #92400e;">🆕 {day}</h4>'
+            html += f'<p style="margin: 5px 0; color: #856404; font-size: 13px;">✓ Event lineup updated</p>'
+            html += '</div>'
+    else:
+        # Handle dict format (for future use)
+        for day, items in changes.items():
+            html += f'<div style="margin-bottom: 15px; padding: 12px; background: white; border-radius: 8px;">'
+            html += f'<h4 style="margin: 0 0 8px 0; color: #92400e;">🆕 {day}</h4>'
+            
+            for item in items:
+                html += f'<p style="margin: 5px 0; color: #856404; font-size: 13px;">✓ {item}</p>'
+            
+            html += '</div>'
     
     return html
 
