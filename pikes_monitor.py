@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-🎵 Pikes Ibiza Monitor - Enhanced
-Tracks DJ lineups and sends email alerts with detailed change information
+🎵 Pikes Ibiza Monitor
+Tracks DJ lineups with detailed before/after change tracking
 """
 
 import requests
@@ -33,23 +33,21 @@ def fetch_pikes_program():
         return {}
 
 def extract_events(html_content):
-    """Extract events from HTML with more granularity"""
+    """Extract events from HTML"""
     events = {}
     
-    # Look for June dates
-    for day in range(1, 32):
+    # Look for June dates (8-24)
+    for day in range(8, 25):
         patterns = [
             f"June {day}",
             f"Jun {day}",
-            f"{day:02d}",
         ]
         
         for pattern in patterns:
             if pattern in html_content:
-                # Find the event block for this date
                 idx = html_content.find(pattern)
                 if idx > 0:
-                    # Extract surrounding context (next 500 chars)
+                    # Extract surrounding context
                     snippet = html_content[idx:idx+800]
                     
                     # Clean up
@@ -81,8 +79,8 @@ def save_snapshot(data, filename="pikes_snapshot.json"):
     with open(filename, 'w') as f:
         json.dump(data, f, indent=2)
 
-def detect_detailed_changes(current, previous):
-    """Detect detailed changes for each date"""
+def detect_changes(current, previous):
+    """Detect what changed"""
     changes = {}
     
     all_dates = set(list(current.keys()) + list(previous.keys()))
@@ -92,21 +90,19 @@ def detect_detailed_changes(current, previous):
         previous_val = previous.get(date, "")
         
         if current_val != previous_val:
-            # Extract date number
             match = re.search(r"(\d+)", date)
             day = match.group(1) if match else "?"
             
             changes[date] = {
                 "day": f"Jun {day}",
-                "old": previous_val,
-                "new": current_val,
-                "status": "Updated" if previous_val else "Added"
+                "before": previous_val if previous_val else "(New event)",
+                "after": current_val,
             }
     
     return changes
 
 def send_email(current_events, changes):
-    """Send email with detailed changes"""
+    """Send email with current lineup + detailed changes"""
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -119,43 +115,51 @@ def send_email(current_events, changes):
         print("⚠️  Missing email credentials")
         return
     
-    # Build current lineup HTML
+    # Build CURRENT LINEUP section (all events)
     current_html = ""
     for date in sorted(current_events.keys()):
         current_html += f"""
-<div style="margin: 15px 0; padding: 12px; background: #f9f9f9; border-left: 3px solid #ff6b9d; border-radius: 4px;">
-    <p style="margin: 0; font-weight: bold; color: #333;">{date}</p>
-    <p style="margin: 5px 0 0 0; font-size: 13px; color: #666;">{current_events[date][:150]}</p>
+<div style="margin: 12px 0; padding: 10px; background: #f9f9f9; border-left: 3px solid #ff6b9d; border-radius: 4px;">
+    <p style="margin: 0; font-weight: bold; color: #333; font-size: 14px;">{date}</p>
+    <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">{current_events[date]}</p>
 </div>"""
     
-    # Build changes HTML with inline details
+    # Build WHAT CHANGED section (before/after)
     changes_html = ""
     if changes:
         for date in sorted(changes.keys()):
             change = changes[date]
             changes_html += f"""
 <div style="margin: 15px 0; padding: 12px; background: #fef3c7; border-left: 3px solid #fbbf24; border-radius: 4px;">
-    <p style="margin: 0; font-weight: bold; color: #333;">{change['day']}</p>
-    <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">
-        <span style="background: #fff3cd; padding: 2px 6px; border-radius: 3px;">✓ {change['status']}</span>
-    </p>
-    <p style="margin: 8px 0 0 0; font-size: 12px; color: #555; padding: 8px; background: white; border-radius: 3px;">
-        {change['new'][:200]}
-    </p>
+    <p style="margin: 0; font-weight: bold; color: #d97706; font-size: 14px;">{change['day']} - Changed</p>
+    
+    <div style="margin: 10px 0 0 0;">
+        <p style="margin: 0; font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">📍 Was:</p>
+        <p style="margin: 5px 0; font-size: 12px; color: #555; padding: 8px; background: #fff5e6; border-radius: 3px; border-left: 2px solid #d97706;">
+            {change['before']}
+        </p>
+    </div>
+    
+    <div style="margin: 10px 0 0 0;">
+        <p style="margin: 0; font-size: 11px; color: #059669; text-transform: uppercase; letter-spacing: 0.5px;">✓ Now:</p>
+        <p style="margin: 5px 0; font-size: 12px; color: #065f46; padding: 8px; background: #ecfdf5; border-radius: 3px; border-left: 2px solid #059669;">
+            {change['after']}
+        </p>
+    </div>
 </div>"""
     else:
-        changes_html = '<p style="color: #666;">No changes detected</p>'
+        changes_html = '<p style="color: #666; text-align: center; padding: 20px;">No changes detected</p>'
     
     html = f"""<html><body style="font-family: Arial; color: #333; background: #f5f5f5; padding: 20px;">
 <div style="max-width: 900px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px;">
 
-<h1 style="color: #ff6b9d; text-align: center; margin: 0 0 10px 0;">🎵 Pikes Ibiza</h1>
-<h2 style="text-align: center; color: #666; font-size: 14px; margin: 0 0 30px 0;">June 8-24 Lineup Monitor</h2>
+<h1 style="color: #ff6b9d; text-align: center; margin: 0 0 5px 0;">🎵 Pikes Ibiza</h1>
+<h2 style="text-align: center; color: #666; font-size: 13px; margin: 0 0 30px 0;">June 8-24 Lineup Monitor</h2>
 
-<h3 style="color: #333; border-bottom: 2px solid #ff6b9d; padding-bottom: 10px;">📅 CURRENT LINEUP</h3>
+<h3 style="color: #333; border-bottom: 2px solid #ff6b9d; padding-bottom: 10px; margin: 0 0 15px 0;">📅 CURRENT LINEUP</h3>
 {current_html}
 
-<h3 style="color: #333; border-bottom: 2px solid #fbbf24; padding-bottom: 10px; margin-top: 30px;">🔄 WHAT CHANGED</h3>
+<h3 style="color: #333; border-bottom: 2px solid #fbbf24; padding-bottom: 10px; margin: 30px 0 15px 0;">🔄 WHAT CHANGED</h3>
 {changes_html}
 
 <div style="text-align: center; padding-top: 20px; border-top: 1px solid #eee; margin-top: 30px; font-size: 11px; color: #999;">
@@ -195,12 +199,12 @@ def main():
     # Load previous snapshot
     previous_program = load_snapshot()
     
-    # Detect detailed changes
-    changes = detect_detailed_changes(current_program, previous_program)
+    # Detect changes
+    changes = detect_changes(current_program, previous_program)
     
     print(f"\n{'='*70}")
     if changes:
-        print(f"🔄 CHANGES DETECTED ({len(changes)} dates updated)")
+        print(f"🔄 CHANGES DETECTED ({len(changes)} dates)")
         for date in list(changes.keys())[:5]:
             print(f"  ✓ {date}")
     else:
