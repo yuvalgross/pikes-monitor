@@ -78,14 +78,25 @@ def save_snapshot(data, filename="pikes_snapshot.json"):
     with open(filename, 'w') as f:
         json.dump(data, f, indent=2)
 
-def format_event(text):
-    """Format event text nicely"""
-    if not text:
+def format_event(value):
+    """Format event text nicely - handles both string and dict"""
+    if not value:
         return "(No event listed)"
     
-    # Clean up formatting
-    text = text.replace(" | ", "\n")
-    return text
+    # Handle dict (old format)
+    if isinstance(value, dict):
+        if 'events' in value:
+            events = value['events']
+            if isinstance(events, list):
+                return " | ".join(str(e) for e in events[:3])
+        return str(value)
+    
+    # Handle string
+    if isinstance(value, str):
+        text = value.replace(" | ", "\n")
+        return text
+    
+    return str(value)
 
 def detect_changes(current, previous):
     """Detect changes (Jun 8-24 only)"""
