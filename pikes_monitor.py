@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 🎵 Pikes Ibiza Monitor - Jun 8-24
-Monitors with correct event-specific links
+Monitors with inline changes and bigger fonts
 """
 
 import requests
@@ -12,7 +12,7 @@ from datetime import datetime
 
 PIKES_URL = "https://www.pikesibiza.com/whats-on/"
 
-# Baseline data with CORRECT event slugs
+# Baseline data with correct event slugs
 BASELINE_DATA = {
     "June 8": {
         "time": "21:00",
@@ -156,7 +156,7 @@ def detect_changes(current, previous):
     return changes
 
 def send_email(current_program, changes):
-    """Send email"""
+    """Send email with inline changes"""
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -169,10 +169,10 @@ def send_email(current_program, changes):
         print("⚠️  Missing email credentials")
         return
     
-    # Build CURRENT LINEUP with correct event links
+    # Build CURRENT LINEUP with inline changes
     current_html = f"""
 <p style="margin: 0 0 20px 0; text-align: center;">
-    <a href="{PIKES_URL}" style="color: #ff6b9d; text-decoration: none; font-weight: bold; font-size: 14px;">
+    <a href="{PIKES_URL}" style="color: #ff6b9d; text-decoration: none; font-weight: bold; font-size: 16px;">
         🔗 View full program on Pikes.ibiza.com
     </a>
 </p>
@@ -191,7 +191,6 @@ def send_email(current_program, changes):
                 slug = event.get('slug', '')
                 event_url = f"https://www.pikesibiza.com/event/{slug}/" if slug else None
             else:
-                # Old string format
                 parts = str(event).split(' | ')
                 time_str = parts[0] if len(parts) > 0 else ''
                 name = parts[1] if len(parts) > 1 else ''
@@ -199,75 +198,65 @@ def send_email(current_program, changes):
                 event_url = None
             
             current_html += f"""
-<div style="margin: 12px 0; padding: 10px; background: #f9f9f9; border-left: 3px solid #ff6b9d; border-radius: 4px;">
-    <p style="margin: 0; font-weight: bold; color: #333; font-size: 13px;">
+<div style="margin: 15px 0; padding: 12px; background: #f9f9f9; border-left: 3px solid #ff6b9d; border-radius: 4px;">
+    <p style="margin: 0; font-weight: bold; color: #333; font-size: 15px;">
         • {date} - {time_str}"""
             
             if event_url:
-                current_html += f' <a href="{event_url}" style="color: #ff6b9d; text-decoration: none; font-size: 11px;">🔗</a>'
+                current_html += f' <a href="{event_url}" style="color: #ff6b9d; text-decoration: none; font-size: 12px;">🔗</a>'
             
             current_html += f"""
     </p>
-    <p style="margin: 3px 0 0 0; font-size: 12px; color: #666; font-weight: 500;">• {name}</p>
-    <p style="margin: 3px 0 0 0; font-size: 12px; color: #666;">• {artists}</p>
-</div>"""
-    
-    # Build WHAT CHANGED
-    changes_html = ""
-    if changes:
-        for day in range(8, 25):
-            date = f"June {day}"
+    <p style="margin: 5px 0 0 0; font-size: 14px; color: #666; font-weight: 500;">• {name}</p>
+    <p style="margin: 5px 0 0 0; font-size: 13px; color: #666;">• {artists}</p>"""
+            
+            # Add inline changes if any
             if date in changes:
                 change = changes[date]
-                
-                # Format before
                 before_val = change['before']
-                if isinstance(before_val, dict):
-                    before_html = f"{before_val.get('name', '')} - {before_val.get('artists', '')}"
-                else:
-                    before_html = str(before_val)
-                
-                # Format after
                 after_val = change['after']
-                if isinstance(after_val, dict):
-                    after_html = f"{after_val.get('name', '')} - {after_val.get('artists', '')}"
-                else:
-                    after_html = str(after_val)
                 
-                changes_html += f"""
-<div style="margin: 15px 0; padding: 12px; background: #fef3c7; border-left: 3px solid #fbbf24; border-radius: 4px;">
-    <p style="margin: 0; font-weight: bold; color: #d97706; font-size: 13px;">{change['day']} - Changed</p>
-    
-    <div style="margin: 10px 0 0 0;">
-        <p style="margin: 0; font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold;">📍 Was:</p>
-        <p style="margin: 5px 0; font-size: 12px; color: #555; padding: 8px; background: #fff5e6; border-radius: 3px; border-left: 2px solid #d97706;">
-            {before_html}
+                if isinstance(before_val, dict):
+                    before_name = before_val.get('name', '')
+                    before_artists = before_val.get('artists', '')
+                    before_text = f"{before_name} - {before_artists}"
+                else:
+                    before_text = str(before_val)
+                
+                if isinstance(after_val, dict):
+                    after_name = after_val.get('name', '')
+                    after_artists = after_val.get('artists', '')
+                    after_text = f"{after_name} - {after_artists}"
+                else:
+                    after_text = str(after_val)
+                
+                current_html += f"""
+    <div style="margin: 10px 0 0 0; padding: 10px; background: #fef3c7; border-radius: 3px; border-left: 2px solid #fbbf24;">
+        <p style="margin: 0; font-size: 11px; color: #d97706; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">🔄 Changed</p>
+        <p style="margin: 5px 0 0 0; font-size: 12px; color: #555;">
+            <strong>Was:</strong> {before_text[:80]}
         </p>
-    </div>
-    
-    <div style="margin: 10px 0 0 0;">
-        <p style="margin: 0; font-size: 10px; color: #059669; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold;">✓ Now:</p>
-        <p style="margin: 5px 0; font-size: 12px; color: #065f46; padding: 8px; background: #ecfdf5; border-radius: 3px; border-left: 2px solid #059669;">
-            {after_html}
+        <p style="margin: 5px 0 0 0; font-size: 12px; color: #065f46;">
+            <strong>Now:</strong> {after_text[:80]}
         </p>
-    </div>
+    </div>"""
+            else:
+                current_html += f"""
+    <p style="margin: 8px 0 0 0; font-size: 12px; color: #059669;">✅ No changes</p>"""
+            
+            current_html += """
 </div>"""
-    else:
-        changes_html = '<p style="color: #666; text-align: center; padding: 20px; font-size: 13px;">✅ No changes detected</p>'
     
     html = f"""<html><body style="font-family: Arial; color: #333; background: #f5f5f5; padding: 20px;">
 <div style="max-width: 900px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px;">
 
-<h1 style="color: #ff6b9d; text-align: center; margin: 0 0 5px 0;">🎵 Pikes Ibiza</h1>
-<h2 style="text-align: center; color: #666; font-size: 13px; margin: 0 0 30px 0;">June 8-24 Lineup Monitor</h2>
+<h1 style="color: #ff6b9d; text-align: center; margin: 0 0 10px 0; font-size: 32px;">🎵 Pikes Ibiza</h1>
+<h2 style="text-align: center; color: #666; font-size: 16px; margin: 0 0 30px 0;">June 8-24 Lineup Monitor</h2>
 
-<h3 style="color: #333; border-bottom: 2px solid #ff6b9d; padding-bottom: 10px; margin: 0 0 15px 0; font-size: 14px;">📅 CURRENT LINEUP</h3>
+<h3 style="color: #333; border-bottom: 2px solid #ff6b9d; padding-bottom: 10px; margin: 0 0 15px 0; font-size: 18px;">📅 CURRENT LINEUP</h3>
 {current_html}
 
-<h3 style="color: #333; border-bottom: 2px solid #fbbf24; padding-bottom: 10px; margin: 30px 0 15px 0; font-size: 14px;">🔄 WHAT CHANGED</h3>
-{changes_html}
-
-<div style="text-align: center; padding-top: 20px; border-top: 1px solid #eee; margin-top: 30px; font-size: 11px; color: #999;">
+<div style="text-align: center; padding-top: 20px; border-top: 1px solid #eee; margin-top: 30px; font-size: 12px; color: #999;">
     <p>Email sent: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
     <p>Monitor checks every 48 hours</p>
 </div>
