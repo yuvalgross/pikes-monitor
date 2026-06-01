@@ -54,7 +54,7 @@ BASELINE_DATA = {
         "time": "21:00",
         "name": "Sundays at Pikes",
         "artists": "LINE UP COMING SOON…",
-        "slug": "sundays-14-06-2026"
+        "slug": "sundays-at-pikes-14-06-2026"
     },
     "June 15": {
         "time": "21:00",
@@ -96,7 +96,7 @@ BASELINE_DATA = {
         "time": "21:00",
         "name": "Sundays at Pikes",
         "artists": "LINE UP COMING SOON…",
-        "slug": "sundays-21-06-2026"
+        "slug": "sundays-at-pikes-21-06-2026"
     },
     "June 22": {
         "time": "21:00",
