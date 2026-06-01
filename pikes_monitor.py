@@ -160,9 +160,20 @@ def send_email(current_program, changes):
         print("⚠️  Missing email credentials")
         return
     
-    current_html = f"""
+    # Build changelog
+    changelog = ""
+    if changes:
+        changelog = "<div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px;">"
+        changelog += "<p style="margin: 0 0 10px 0; font-weight: bold; color: #856404;">🔄 CHANGES DETECTED</p>"
+        for date in sorted(changes.keys()):
+            change = changes[date]
+            day = change.get('day', date)
+            changelog += f"<p style="margin: 4px 0; color: #856404; font-size: 13px;">✓ {day}</p>"
+        changelog += "</div>"
+    
+    current_html = f"""{changelog}
 <p style="margin: 0 0 20px 0; text-align: center;">
-    <a href="{PIKES_URL}" style="color: white; text-decoration: none; font-weight: bold; font-size: 16px; background: #ff6b9d; padding: 12px 24px; border-radius: 6px; display: inline-block;">
+    <a href="https://www.pikesibiza.com/whats-on/" style="color: white; text-decoration: none; font-weight: bold; font-size: 16px; background: #ff6b9d; padding: 12px 24px; border-radius: 6px; display: inline-block;">
         🔗 View Full Program
     </a>
 </p>
@@ -192,8 +203,7 @@ def send_email(current_program, changes):
             
             current_html += f"""
 <div style="margin: 14px 0; padding: 16px; background: {bg_color}; border-left: 4px solid {border_color}; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-    <p style="margin: 0; font-weight: bold; color: #222; font-size: 15px;">
-        📍 {date} @ {time_str}"""
+    <p style="margin: 0; font-weight: bold; color: #222; font-size: 15px;">📍 {date} @ {time_str}"""
             
             if event_url:
                 current_html += f' <a href="{event_url}" style="color: #ff6b9d; text-decoration: none; font-size: 11px; font-weight: bold;">🔗</a>'
@@ -205,76 +215,53 @@ def send_email(current_program, changes):
             
             if has_change:
                 change = changes[date]
-                before_val = change['before']
-                after_val = change['after']
+                before_val = change.get('before', {})
+                after_val = change.get('after', {})
                 
-                if isinstance(before_val, dict):
-                    before_text = f"{before_val.get('name', '')} - {before_val.get('artists', '')}"
-                else:
-                    before_text = str(before_val)
-                
-                if isinstance(after_val, dict):
-                    after_text = f"{after_val.get('name', '')} - {after_val.get('artists', '')}"
-                else:
-                    after_text = str(after_val)
-                
-                current_html += f"""
-    <div style="margin: 12px 0 0 0; padding: 10px; background: linear-gradient(135deg, #fff9e6 0%, #fffbf0 100%); border-radius: 4px; border-left: 3px solid #fbbf24;">
-        <p style="margin: 0; font-size: 11px; color: #d97706; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">🔄 LINEUP UPDATED</p>
-        <p style="margin: 6px 0 0 0; font-size: 12px; color: #555; word-wrap: break-word; white-space: normal; line-height: 1.5;"><strong>Before:</strong> {before_text}</p>
-        <p style="margin: 4px 0 0 0; font-size: 12px; color: #059669; word-wrap: break-word; white-space: normal; line-height: 1.5;"><strong>After:</strong> {after_text}</p>
+                # Only show LINEUP UPDATED if values are actually different
+                if isinstance(before_val, dict) and isinstance(after_val, dict):
+                    before_artists = before_val.get('artists', '')
+                    after_artists = after_val.get('artists', '')
+                    
+                    if before_artists != after_artists or before_val.get('name') != after_val.get('name'):
+                        current_html += """
+    <div style="margin-top: 12px; padding: 10px; background: #fff9e6; border-radius: 4px; border-left: 3px solid #ffc107;">
+        <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; color: #856404;">🔄 LINEUP UPDATED</p>
+        <p style="margin: 0; font-size: 12px; color: #555;"><strong>Before:</strong> """ + (before_val.get('name', '') + " - " + before_artists[:70]) + """</p>
+        <p style="margin: 4px 0 0 0; font-size: 12px; color: #059669;"><strong>After:</strong> """ + (after_val.get('name', '') + " - " + after_artists[:70]) + """</p>
     </div>"""
+                    else:
+                        current_html += '\n    <p style="margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
+                else:
+                    current_html += '\n    <p style="margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
             else:
-                current_html += f"""
-    <p style="margin: 8px 0 0 0; font-size: 12px; color: #059669; font-weight: 500;">✅ No changes</p>"""
+                current_html += '\n    <p style="margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
             
-            current_html += """
-</div>"""
+            current_html += "\n</div>"
     
-    # End of monitoring message
-    end_message = """
-<div style="margin: 30px 0 0 0; padding: 20px; background: linear-gradient(135deg, #ff6b9d 0%, #ff8ab8 100%); border-radius: 8px; text-align: center; color: white;">
-    <p style="margin: 0; font-size: 18px; font-weight: bold;">🎉 Trip Ends June 25</p>
-    <p style="margin: 8px 0 0 0; font-size: 14px; opacity: 0.95;">Monitoring ends June 25 • Enjoy your Ibiza adventure! 🌴</p>
+    current_html += """
+<div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0; text-align: center; font-size: 12px; color: #999;">
+    <p style="margin: 0;">🎉 Trip Ends June 25</p>
+    <p style="margin: 4px 0 0 0;">Monitoring ends June 25 • Enjoy your Ibiza adventure!</p>
 </div>
 """
     
-    html = f"""<html><body style="font-family: 'Segoe UI', Arial, sans-serif; color: #333; background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%); padding: 20px; margin: 0;">
-<div style="max-width: 900px; margin: 0 auto; background: white; border-radius: 12px; padding: 40px; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
-
-<div style="background: linear-gradient(135deg, #ff6b9d 0%, #ff8ab8 100%); color: white; padding: 30px; border-radius: 10px; text-align: center; margin-bottom: 30px;">
-    <p style="margin: 0; font-size: 42px; font-weight: bold;">🎵</p>
-    <h1 style="color: white; text-align: center; margin: 10px 0 0 0; font-size: 32px;">Pikes Ibiza</h1>
-    <h2 style="text-align: center; color: rgba(255,255,255,0.9); font-size: 16px; margin: 8px 0 0 0; font-weight: 400;">📅 June 8-24 Lineup Monitor</h2>
-</div>
-
-<h3 style="color: #333; border-bottom: 3px solid #ff6b9d; padding-bottom: 12px; margin: 0 0 20px 0; font-size: 18px;">📅 CURRENT LINEUP</h3>
-{current_html}
-
-{end_message}
-
-<div style="text-align: center; padding-top: 25px; border-top: 1px solid #eee; margin-top: 30px; font-size: 12px; color: #999;">
-    <p style="margin: 0;">Email sent: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
-    <p style="margin: 6px 0 0 0;">✨ Next check in 48 hours (until June 25)</p>
-</div>
-
-</div>
-</body></html>"""
-    
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = "🎵 Pikes Ibiza - Lineup Update"
+    msg["Subject"] = "🎵 Pikes Ibiza Lineup Update"
     msg["From"] = EMAIL
     msg["To"] = RECIPIENT
-    msg.attach(MIMEText(html, "html"))
+    
+    html_part = MIMEText(current_html, "html")
+    msg.attach(html_part)
     
     try:
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10)
-        server.login(EMAIL, PASSWORD)
-        server.sendmail(EMAIL, RECIPIENT, msg.as_string())
-        server.quit()
-        print("✅ Email sent!")
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(EMAIL, PASSWORD)
+            server.sendmail(EMAIL, RECIPIENT, msg.as_string())
+        print("✅ Email sent successfully")
     except Exception as e:
-        print(f"Email error: {e}")
+        print(f"❌ Email error: {e}")
+
 
 def main():
     print("=" * 70)
