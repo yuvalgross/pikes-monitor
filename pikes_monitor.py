@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
 🎵 Pikes Ibiza Monitor
-Tracks DJ lineups with detailed before/after change tracking
+Clean event extraction with readable before/after tracking (Jun 8-24)
 """
 
 import requests
-from bs4 import BeautifulSoup
 import json
 import os
 import re
@@ -33,45 +32,45 @@ def fetch_pikes_program():
         return {}
 
 def extract_events(html_content):
-    """Extract events from HTML"""
+    """Extract clean event data for Jun 8-24 only"""
     events = {}
     
-    # Look for June dates (8-24)
+    # Only June 8-24
     for day in range(8, 25):
-        patterns = [
-            f"June {day}",
-            f"Jun {day}",
-        ]
+        date_str = f"June {day}"
         
-        for pattern in patterns:
-            if pattern in html_content:
-                idx = html_content.find(pattern)
-                if idx > 0:
-                    # Extract surrounding context
-                    snippet = html_content[idx:idx+800]
-                    
-                    # Clean up
-                    snippet = snippet.replace('<', '\n<').replace('>', '>\n')
-                    lines = [l.strip() for l in snippet.split('\n') if l.strip() and '<' not in l]
-                    
-                    # Get relevant lines
-                    event_info = []
-                    for line in lines[:15]:
-                        if line and len(line) > 3 and not line.startswith(('http', 'www', 'href')):
-                            event_info.append(line)
-                    
-                    if event_info:
-                        date_key = f"June {day}"
-                        events[date_key] = " | ".join(event_info[:3])
-                        break
+        if date_str in html_content:
+            idx = html_content.find(date_str)
+            if idx >= 0:
+                # Get context around date
+                start = max(0, idx - 100)
+                end = min(len(html_content), idx + 1200)
+                snippet = html_content[start:end]
+                
+                # Extract readable text (not HTML)
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(snippet, 'html.parser')
+                text = soup.get_text(separator=" | ", strip=True)
+                
+                # Clean up
+                lines = [l.strip() for l in text.split('|') if l.strip() and len(l.strip()) > 3]
+                
+                # Get key lines (time, event name, artists)
+                event_text = " | ".join(lines[:4])
+                
+                if event_text and len(event_text) > 10:
+                    events[date_str] = event_text
     
     return events
 
 def load_snapshot(filename="pikes_snapshot.json"):
     """Load previous snapshot"""
     if os.path.exists(filename):
-        with open(filename, 'r') as f:
-            return json.load(f)
+        try:
+            with open(filename, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
     return {}
 
 def save_snapshot(data, filename="pikes_snapshot.json"):
@@ -79,13 +78,23 @@ def save_snapshot(data, filename="pikes_snapshot.json"):
     with open(filename, 'w') as f:
         json.dump(data, f, indent=2)
 
+def format_event(text):
+    """Format event text nicely"""
+    if not text:
+        return "(No event listed)"
+    
+    # Clean up formatting
+    text = text.replace(" | ", "\n")
+    return text
+
 def detect_changes(current, previous):
-    """Detect what changed"""
+    """Detect changes (Jun 8-24 only)"""
     changes = {}
     
-    all_dates = set(list(current.keys()) + list(previous.keys()))
+    # Get all June 8-24 dates in order
+    dates_to_check = [f"June {day}" for day in range(8, 25)]
     
-    for date in sorted(all_dates):
+    for date in dates_to_check:
         current_val = current.get(date, "")
         previous_val = previous.get(date, "")
         
@@ -95,14 +104,14 @@ def detect_changes(current, previous):
             
             changes[date] = {
                 "day": f"Jun {day}",
-                "before": previous_val if previous_val else "(New event)",
-                "after": current_val,
+                "before": format_event(previous_val) if previous_val else "(New event)",
+                "after": format_event(current_val) if current_val else "(Event removed)",
             }
     
     return changes
 
 def send_email(current_events, changes):
-    """Send email with current lineup + detailed changes"""
+    """Send email with current lineup + before/after changes"""
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -115,40 +124,56 @@ def send_email(current_events, changes):
         print("⚠️  Missing email credentials")
         return
     
-    # Build CURRENT LINEUP section (all events)
+    # Build CURRENT LINEUP (Jun 8-24 only, in order)
     current_html = ""
-    for date in sorted(current_events.keys()):
-        current_html += f"""
+    for day in range(8, 25):
+        date = f"June {day}"
+        if date in current_events:
+            event = current_events[date]
+            event_lines = event.split(" | ")
+            
+            current_html += f"""
 <div style="margin: 12px 0; padding: 10px; background: #f9f9f9; border-left: 3px solid #ff6b9d; border-radius: 4px;">
-    <p style="margin: 0; font-weight: bold; color: #333; font-size: 14px;">{date}</p>
-    <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">{current_events[date]}</p>
-</div>"""
+    <p style="margin: 0; font-weight: bold; color: #333; font-size: 13px;">• {date}</p>"""
+            
+            for line in event_lines[:3]:
+                current_html += f'<p style="margin: 3px 0 0 0; font-size: 12px; color: #666;">• {line}</p>'
+            
+            current_html += "</div>"
     
-    # Build WHAT CHANGED section (before/after)
+    # Build WHAT CHANGED (only Jun 8-24)
     changes_html = ""
     if changes:
-        for date in sorted(changes.keys()):
-            change = changes[date]
-            changes_html += f"""
+        for day in range(8, 25):
+            date = f"June {day}"
+            if date in changes:
+                change = changes[date]
+                before_lines = change['before'].split("\n")
+                after_lines = change['after'].split("\n")
+                
+                before_html = "<br>".join(before_lines[:3])
+                after_html = "<br>".join(after_lines[:3])
+                
+                changes_html += f"""
 <div style="margin: 15px 0; padding: 12px; background: #fef3c7; border-left: 3px solid #fbbf24; border-radius: 4px;">
-    <p style="margin: 0; font-weight: bold; color: #d97706; font-size: 14px;">{change['day']} - Changed</p>
+    <p style="margin: 0; font-weight: bold; color: #d97706; font-size: 13px;">{change['day']} - Changed</p>
     
     <div style="margin: 10px 0 0 0;">
-        <p style="margin: 0; font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">📍 Was:</p>
+        <p style="margin: 0; font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold;">📍 Was:</p>
         <p style="margin: 5px 0; font-size: 12px; color: #555; padding: 8px; background: #fff5e6; border-radius: 3px; border-left: 2px solid #d97706;">
-            {change['before']}
+            {before_html}
         </p>
     </div>
     
     <div style="margin: 10px 0 0 0;">
-        <p style="margin: 0; font-size: 11px; color: #059669; text-transform: uppercase; letter-spacing: 0.5px;">✓ Now:</p>
+        <p style="margin: 0; font-size: 10px; color: #059669; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold;">✓ Now:</p>
         <p style="margin: 5px 0; font-size: 12px; color: #065f46; padding: 8px; background: #ecfdf5; border-radius: 3px; border-left: 2px solid #059669;">
-            {change['after']}
+            {after_html}
         </p>
     </div>
 </div>"""
     else:
-        changes_html = '<p style="color: #666; text-align: center; padding: 20px;">No changes detected</p>'
+        changes_html = '<p style="color: #666; text-align: center; padding: 20px; font-size: 13px;">✅ No changes detected</p>'
     
     html = f"""<html><body style="font-family: Arial; color: #333; background: #f5f5f5; padding: 20px;">
 <div style="max-width: 900px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px;">
@@ -156,10 +181,10 @@ def send_email(current_events, changes):
 <h1 style="color: #ff6b9d; text-align: center; margin: 0 0 5px 0;">🎵 Pikes Ibiza</h1>
 <h2 style="text-align: center; color: #666; font-size: 13px; margin: 0 0 30px 0;">June 8-24 Lineup Monitor</h2>
 
-<h3 style="color: #333; border-bottom: 2px solid #ff6b9d; padding-bottom: 10px; margin: 0 0 15px 0;">📅 CURRENT LINEUP</h3>
+<h3 style="color: #333; border-bottom: 2px solid #ff6b9d; padding-bottom: 10px; margin: 0 0 15px 0; font-size: 14px;">📅 CURRENT LINEUP</h3>
 {current_html}
 
-<h3 style="color: #333; border-bottom: 2px solid #fbbf24; padding-bottom: 10px; margin: 30px 0 15px 0;">🔄 WHAT CHANGED</h3>
+<h3 style="color: #333; border-bottom: 2px solid #fbbf24; padding-bottom: 10px; margin: 30px 0 15px 0; font-size: 14px;">🔄 WHAT CHANGED</h3>
 {changes_html}
 
 <div style="text-align: center; padding-top: 20px; border-top: 1px solid #eee; margin-top: 30px; font-size: 11px; color: #999;">
@@ -195,6 +220,7 @@ def main():
     
     # Fetch current program
     current_program = fetch_pikes_program()
+    print(f"   📊 Extracted: {len(current_program)} days")
     
     # Load previous snapshot
     previous_program = load_snapshot()
@@ -205,8 +231,10 @@ def main():
     print(f"\n{'='*70}")
     if changes:
         print(f"🔄 CHANGES DETECTED ({len(changes)} dates)")
-        for date in list(changes.keys())[:5]:
-            print(f"  ✓ {date}")
+        for date in sorted(changes.keys()):
+            match = re.search(r"(\d+)", date)
+            day = match.group(1) if match else "?"
+            print(f"  ✓ Jun {day}")
     else:
         print("✅ No changes detected")
     print(f"{'='*70}\n")
