@@ -221,8 +221,8 @@ def send_email(current_program, changes):
                 current_html += f"""
     <div style="margin: 12px 0 0 0; padding: 10px; background: linear-gradient(135deg, #fff9e6 0%, #fffbf0 100%); border-radius: 4px; border-left: 3px solid #fbbf24;">
         <p style="margin: 0; font-size: 11px; color: #d97706; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">🔄 LINEUP UPDATED</p>
-        <p style="margin: 6px 0 0 0; font-size: 12px; color: #555;"><strong>Before:</strong> {before_text[:70]}</p>
-        <p style="margin: 4px 0 0 0; font-size: 12px; color: #059669;"><strong>After:</strong> {after_text[:70]}</p>
+        <p style="margin: 6px 0 0 0; font-size: 12px; color: #555; word-wrap: break-word; white-space: normal; line-height: 1.5;"><strong>Before:</strong> {before_text}</p>
+        <p style="margin: 4px 0 0 0; font-size: 12px; color: #059669; word-wrap: break-word; white-space: normal; line-height: 1.5;"><strong>After:</strong> {after_text}</p>
     </div>"""
             else:
                 current_html += f"""
