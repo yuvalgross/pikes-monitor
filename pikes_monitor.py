@@ -163,21 +163,15 @@ def send_email(current_program, changes):
     # Build changelog
     changelog = ""
     if changes:
-        changelog = '<div style='background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px;">'
-        changelog += '<p style='margin: 0 0 10px 0; font-weight: bold; color: #856404;">🔄 CHANGES DETECTED</p>'​
+        changelog = '<div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px;">'
+        changelog += '<p style="margin: 0 0 10px 0; font-weight: bold; color: #856404;">🔄 CHANGES DETECTED</p>'
         for date in sorted(changes.keys()):
             change = changes[date]
             day = change.get('day', date)
-            changelog += f"<p style='margin: 4px 0; color: #856404; font-size: 13px;">✓ {day}</p>"
-        changelog += "</div>"
+            changelog += f'<p style="margin: 4px 0; color: #856404; font-size: 13px;">✓ {day}</p>'
+        changelog += '</div>'
     
-    current_html = f"""{changelog}
-<p style='margin: 0 0 20px 0; text-align: center;">
-    <a href="https://www.pikesibiza.com/whats-on/" style="color: white; text-decoration: none; font-weight: bold; font-size: 16px; background: #ff6b9d; padding: 12px 24px; border-radius: 6px; display: inline-block;">
-        🔗 View Full Program
-    </a>
-</p>
-"""
+    current_html = changelog + '\n<p style="margin: 0 0 20px 0; text-align: center;">\n    <a href="https://www.pikesibiza.com/whats-on/" style="color: white; text-decoration: none; font-weight: bold; font-size: 16px; background: #ff6b9d; padding: 12px 24px; border-radius: 6px; display: inline-block;">\n        🔗 View Full Program\n    </a>\n</p>\n'
     
     for day in range(8, 25):
         date = f"June {day}"
@@ -201,50 +195,37 @@ def send_email(current_program, changes):
             bg_color = "#fff5f7" if has_change else "#f9f9f9"
             border_color = "#ff6b9d" if has_change else "#e0e0e0"
             
-            current_html += f"""
-<div style='margin: 14px 0; padding: 16px; background: {bg_color}; border-left: 4px solid {border_color}; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-    <p style='margin: 0; font-weight: bold; color: #222; font-size: 15px;">📍 {date} @ {time_str}"""
+            event_link = f' <a href="{event_url}" style="color: #ff6b9d; text-decoration: none; font-size: 11px; font-weight: bold;">🔗</a>' if event_url else ''
             
-            if event_url:
-                current_html += f' <a href='{event_url}" style="color: #ff6b9d; text-decoration: none; font-size: 11px; font-weight: bold;">🔗</a>'
-            
-            current_html += f"""
-    </p>
-    <p style='margin: 8px 0 0 0; font-size: 14px; color: #333; font-weight: 600;">🎤 {name}</p>
-    <p style='margin: 6px 0 0 0; font-size: 13px; color: #666; line-height: 1.4;">👥 {artists}</p>"""
+            current_html += f'\n<div style="margin: 14px 0; padding: 16px; background: {bg_color}; border-left: 4px solid {border_color}; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">\n    <p style="margin: 0; font-weight: bold; color: #222; font-size: 15px;">📍 {date} @ {time_str}{event_link}</p>\n    <p style="margin: 8px 0 0 0; font-size: 14px; color: #333; font-weight: 600;">🎤 {name}</p>\n    <p style="margin: 6px 0 0 0; font-size: 13px; color: #666; line-height: 1.4;">👥 {artists}</p>'
             
             if has_change:
                 change = changes[date]
                 before_val = change.get('before', {})
                 after_val = change.get('after', {})
                 
-                # Only show LINEUP UPDATED if values are actually different
                 if isinstance(before_val, dict) and isinstance(after_val, dict):
                     before_artists = before_val.get('artists', '')
                     after_artists = after_val.get('artists', '')
                     
                     if before_artists != after_artists or before_val.get('name') != after_val.get('name'):
-                        current_html += """
-    <div style='margin-top: 12px; padding: 10px; background: #fff9e6; border-radius: 4px; border-left: 3px solid #ffc107;">
-        <p style='margin: 0 0 6px 0; font-size: 12px; font-weight: bold; color: #856404;">🔄 LINEUP UPDATED</p>
-        <p style='margin: 0; font-size: 12px; color: #555;"><strong>Before:</strong> """ + (before_val.get('name', '') + " - " + before_artists[:70]) + """</p>
-        <p style='margin: 4px 0 0 0; font-size: 12px; color: #059669;"><strong>After:</strong> """ + (after_val.get('name', '') + " - " + after_artists[:70]) + """</p>
-    </div>"""
+                        before_text = before_val.get('name', '') + " - " + before_artists[:70]
+                        after_text = after_val.get('name', '') + " - " + after_artists[:70]
+                        current_html += '\n    <div style="margin-top: 12px; padding: 10px; background: #fff9e6; border-radius: 4px; border-left: 3px solid #ffc107;">'
+                        current_html += '\n        <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; color: #856404;">🔄 LINEUP UPDATED</p>'
+                        current_html += f'\n        <p style="margin: 0; font-size: 12px; color: #555;"><strong>Before:</strong> {before_text}</p>'
+                        current_html += f'\n        <p style="margin: 4px 0 0 0; font-size: 12px; color: #059669;"><strong>After:</strong> {after_text}</p>'
+                        current_html += '\n    </div>'
                     else:
-                        current_html += '\n    <p style='margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
+                        current_html += '\n    <p style="margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
                 else:
-                    current_html += '\n    <p style='margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
+                    current_html += '\n    <p style="margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
             else:
-                current_html += '\n    <p style='margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
+                current_html += '\n    <p style="margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
             
-            current_html += "\n</div>"
+            current_html += '\n</div>'
     
-    current_html += """
-<div style='margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0; text-align: center; font-size: 12px; color: #999;">
-    <p style='margin: 0;">🎉 Trip Ends June 25</p>
-    <p style='margin: 4px 0 0 0;">Monitoring ends June 25 • Enjoy your Ibiza adventure!</p>
-</div>
-"""
+    current_html += '\n<div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0; text-align: center; font-size: 12px; color: #999;">\n    <p style="margin: 0;">🎉 Trip Ends June 25</p>\n    <p style="margin: 4px 0 0 0;">Monitoring ends June 25 • Enjoy your Ibiza adventure!</p>\n</div>\n'
     
     msg = MIMEMultipart("alternative")
     msg["Subject"] = "🎵 Pikes Ibiza Lineup Update"
