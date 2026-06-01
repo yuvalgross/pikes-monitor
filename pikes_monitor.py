@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 🎵 Pikes Ibiza Monitor - Jun 8-24
-Monitors with event-specific links
+Monitors with correct event-specific links
 """
 
 import requests
@@ -12,7 +12,7 @@ from datetime import datetime
 
 PIKES_URL = "https://www.pikesibiza.com/whats-on/"
 
-# Baseline data for Jun 8-24
+# Baseline data with CORRECT event slugs
 BASELINE_DATA = {
     "June 8": {
         "time": "21:00",
@@ -24,25 +24,25 @@ BASELINE_DATA = {
         "time": "18:30",
         "name": "Pikes Presents at 528 Ibiza",
         "artists": "THE BLESSED MADONNA • DEMI RIQUÍSIMO • BUSHWACKA! • PIKES RESIDENT DJS",
-        "slug": "pikes-presents-at-528-ibiza-09-06-2026"
+        "slug": "pikes-presents-09-06-2026"
     },
     "June 10": {
         "time": "21:00",
         "name": "Pikes Sessions",
         "artists": "COMING SOON…",
-        "slug": "pikes-sessions-10-06-2026"
+        "slug": "pikes-session-10-06-2026"
     },
     "June 11": {
         "time": "21:00",
         "name": "Flash x Homoelectric Pride Special",
         "artists": "GINA BREEZE • GUY WILLIAMS • JON JAK • S/A/M • THE MENENDEZ BROTHERS • JAEGEROSSA • HOST LUCY FIZZ",
-        "slug": "flash-x-homoelectric-pride-special-11-06-2026"
+        "slug": "flash-11-06-2026"
     },
     "June 12": {
         "time": "21:00",
         "name": "Pikes Sessions",
         "artists": "HORSE MEAT DISCO • LAURA & SANTIAGO & MORE",
-        "slug": "pikes-sessions-12-06-2026"
+        "slug": "pikes-session-12-06-2026"
     },
     "June 13": {
         "time": "21:00",
@@ -54,7 +54,7 @@ BASELINE_DATA = {
         "time": "21:00",
         "name": "Sundays at Pikes",
         "artists": "LINE UP COMING SOON…",
-        "slug": "sundays-at-pikes-14-06-2026"
+        "slug": "sundays-14-06-2026"
     },
     "June 15": {
         "time": "21:00",
@@ -66,7 +66,7 @@ BASELINE_DATA = {
         "time": "18:30",
         "name": "Pikes Presents at 528 Ibiza",
         "artists": "GERD JANSON B2B MARCEL DETTMANN • HORSE MEAT DISCO • PEACH • PIKES RESIDENT DJS",
-        "slug": "pikes-presents-at-528-ibiza-16-06-2026"
+        "slug": "pikes-presents-16-06-2026"
     },
     "June 17": {
         "time": "21:00",
@@ -84,7 +84,7 @@ BASELINE_DATA = {
         "time": "21:00",
         "name": "Pikes Sessions",
         "artists": "COMING SOON…",
-        "slug": "pikes-sessions-19-06-2026"
+        "slug": "pikes-session-19-06-2026"
     },
     "June 20": {
         "time": "21:00",
@@ -96,7 +96,7 @@ BASELINE_DATA = {
         "time": "21:00",
         "name": "Sundays at Pikes",
         "artists": "LINE UP COMING SOON…",
-        "slug": "sundays-at-pikes-21-06-2026"
+        "slug": "sundays-21-06-2026"
     },
     "June 22": {
         "time": "21:00",
@@ -108,7 +108,7 @@ BASELINE_DATA = {
         "time": "18:30",
         "name": "Pikes Presents x Detroit Love at 528 Ibiza",
         "artists": "CARL CRAIG • FLO REAL • MOODYMANN • RYAN O GORMAN • PIKES RESIDENT DJS",
-        "slug": "pikes-presents-x-detroit-love-at-528-ibiza-23-06-2026"
+        "slug": "pikes-presents-detroit-love-23-06-2026"
     },
     "June 24": {
         "time": "21:00",
@@ -132,15 +132,6 @@ def save_snapshot(data, filename="pikes_snapshot.json"):
     """Save current snapshot"""
     with open(filename, 'w') as f:
         json.dump(data, f, indent=2)
-
-def format_value(val):
-    """Convert value to string - handle dict or string"""
-    if isinstance(val, dict):
-        # Old format
-        if 'name' in val:
-            return val.get('name', '')
-        return str(val)
-    return str(val)
 
 def detect_changes(current, previous):
     """Detect changes for Jun 8-24"""
@@ -178,7 +169,7 @@ def send_email(current_program, changes):
         print("⚠️  Missing email credentials")
         return
     
-    # Build CURRENT LINEUP with event links
+    # Build CURRENT LINEUP with correct event links
     current_html = f"""
 <p style="margin: 0 0 20px 0; text-align: center;">
     <a href="{PIKES_URL}" style="color: #ff6b9d; text-decoration: none; font-weight: bold; font-size: 14px;">
@@ -197,7 +188,8 @@ def send_email(current_program, changes):
                 time_str = event.get('time', '')
                 name = event.get('name', '')
                 artists = event.get('artists', '')
-                event_url = f"https://www.pikesibiza.com/event/{event.get('slug', '')}"
+                slug = event.get('slug', '')
+                event_url = f"https://www.pikesibiza.com/event/{slug}/" if slug else None
             else:
                 # Old string format
                 parts = str(event).split(' | ')
@@ -211,7 +203,7 @@ def send_email(current_program, changes):
     <p style="margin: 0; font-weight: bold; color: #333; font-size: 13px;">
         • {date} - {time_str}"""
             
-            if event_url and event.get('slug'):
+            if event_url:
                 current_html += f' <a href="{event_url}" style="color: #ff6b9d; text-decoration: none; font-size: 11px;">🔗</a>'
             
             current_html += f"""
