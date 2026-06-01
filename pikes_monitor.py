@@ -163,16 +163,16 @@ def send_email(current_program, changes):
     # Build changelog
     changelog = ""
     if changes:
-        changelog = "<div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px;">"
-        changelog += "<p style="margin: 0 0 10px 0; font-weight: bold; color: #856404;">🔄 CHANGES DETECTED</p>"
+        changelog = '<div style='background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px;">'
+        changelog += '<p style='margin: 0 0 10px 0; font-weight: bold; color: #856404;">🔄 CHANGES DETECTED</p>'​
         for date in sorted(changes.keys()):
             change = changes[date]
             day = change.get('day', date)
-            changelog += f"<p style="margin: 4px 0; color: #856404; font-size: 13px;">✓ {day}</p>"
+            changelog += f"<p style='margin: 4px 0; color: #856404; font-size: 13px;">✓ {day}</p>"
         changelog += "</div>"
     
     current_html = f"""{changelog}
-<p style="margin: 0 0 20px 0; text-align: center;">
+<p style='margin: 0 0 20px 0; text-align: center;">
     <a href="https://www.pikesibiza.com/whats-on/" style="color: white; text-decoration: none; font-weight: bold; font-size: 16px; background: #ff6b9d; padding: 12px 24px; border-radius: 6px; display: inline-block;">
         🔗 View Full Program
     </a>
@@ -202,16 +202,16 @@ def send_email(current_program, changes):
             border_color = "#ff6b9d" if has_change else "#e0e0e0"
             
             current_html += f"""
-<div style="margin: 14px 0; padding: 16px; background: {bg_color}; border-left: 4px solid {border_color}; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-    <p style="margin: 0; font-weight: bold; color: #222; font-size: 15px;">📍 {date} @ {time_str}"""
+<div style='margin: 14px 0; padding: 16px; background: {bg_color}; border-left: 4px solid {border_color}; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+    <p style='margin: 0; font-weight: bold; color: #222; font-size: 15px;">📍 {date} @ {time_str}"""
             
             if event_url:
-                current_html += f' <a href="{event_url}" style="color: #ff6b9d; text-decoration: none; font-size: 11px; font-weight: bold;">🔗</a>'
+                current_html += f' <a href='{event_url}" style="color: #ff6b9d; text-decoration: none; font-size: 11px; font-weight: bold;">🔗</a>'
             
             current_html += f"""
     </p>
-    <p style="margin: 8px 0 0 0; font-size: 14px; color: #333; font-weight: 600;">🎤 {name}</p>
-    <p style="margin: 6px 0 0 0; font-size: 13px; color: #666; line-height: 1.4;">👥 {artists}</p>"""
+    <p style='margin: 8px 0 0 0; font-size: 14px; color: #333; font-weight: 600;">🎤 {name}</p>
+    <p style='margin: 6px 0 0 0; font-size: 13px; color: #666; line-height: 1.4;">👥 {artists}</p>"""
             
             if has_change:
                 change = changes[date]
@@ -225,24 +225,24 @@ def send_email(current_program, changes):
                     
                     if before_artists != after_artists or before_val.get('name') != after_val.get('name'):
                         current_html += """
-    <div style="margin-top: 12px; padding: 10px; background: #fff9e6; border-radius: 4px; border-left: 3px solid #ffc107;">
-        <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; color: #856404;">🔄 LINEUP UPDATED</p>
-        <p style="margin: 0; font-size: 12px; color: #555;"><strong>Before:</strong> """ + (before_val.get('name', '') + " - " + before_artists[:70]) + """</p>
-        <p style="margin: 4px 0 0 0; font-size: 12px; color: #059669;"><strong>After:</strong> """ + (after_val.get('name', '') + " - " + after_artists[:70]) + """</p>
+    <div style='margin-top: 12px; padding: 10px; background: #fff9e6; border-radius: 4px; border-left: 3px solid #ffc107;">
+        <p style='margin: 0 0 6px 0; font-size: 12px; font-weight: bold; color: #856404;">🔄 LINEUP UPDATED</p>
+        <p style='margin: 0; font-size: 12px; color: #555;"><strong>Before:</strong> """ + (before_val.get('name', '') + " - " + before_artists[:70]) + """</p>
+        <p style='margin: 4px 0 0 0; font-size: 12px; color: #059669;"><strong>After:</strong> """ + (after_val.get('name', '') + " - " + after_artists[:70]) + """</p>
     </div>"""
                     else:
-                        current_html += '\n    <p style="margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
+                        current_html += '\n    <p style='margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
                 else:
-                    current_html += '\n    <p style="margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
+                    current_html += '\n    <p style='margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
             else:
-                current_html += '\n    <p style="margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
+                current_html += '\n    <p style='margin-top: 8px; font-size: 12px; color: #28a745; font-weight: 600;">✅ No changes</p>'
             
             current_html += "\n</div>"
     
     current_html += """
-<div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0; text-align: center; font-size: 12px; color: #999;">
-    <p style="margin: 0;">🎉 Trip Ends June 25</p>
-    <p style="margin: 4px 0 0 0;">Monitoring ends June 25 • Enjoy your Ibiza adventure!</p>
+<div style='margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0; text-align: center; font-size: 12px; color: #999;">
+    <p style='margin: 0;">🎉 Trip Ends June 25</p>
+    <p style='margin: 4px 0 0 0;">Monitoring ends June 25 • Enjoy your Ibiza adventure!</p>
 </div>
 """
     
