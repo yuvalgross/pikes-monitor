@@ -1,36 +1,122 @@
 #!/usr/bin/env python3
 """
 🎵 Pikes Ibiza Monitor - Jun 8-24
-Monitors lineup changes with accurate before/after tracking
+Monitors with event-specific links
 """
 
 import requests
 import json
 import os
+import re
 from datetime import datetime
 
-# Your known baseline for Jun 8-24
-BASELINE_DATA = {
-    "June 8": "Monday, June 8 - 21:00 | Mondays | SECRET DJS & VERY SPECIAL GUESTS",
-    "June 9": "Tuesday, June 9 - 18:30 | Pikes Presents at 528 Ibiza | THE BLESSED MADONNA • DEMI RIQUÍSIMO • BUSHWACKA! • PIKES RESIDENT DJS",
-    "June 10": "Wednesday, June 10 - 21:00 | Pikes Sessions | COMING SOON…",
-    "June 11": "Thursday, June 11 - 21:00 | Flash x Homoelectric Pride Special | GINA BREEZE • GUY WILLIAMS • JON JAK • S/A/M • THE MENENDEZ BROTHERS • JAEGEROSSA • HOST LUCY FIZZ",
-    "June 12": "Friday, June 12 - 21:00 | Pikes Sessions | HORSE MEAT DISCO • LAURA & SANTIAGO & MORE",
-    "June 13": "Saturday, June 13 - 21:00 | Pikes House Party | LINE UP COMING SOON…",
-    "June 14": "Sunday, June 14 - 21:00 | Sundays at Pikes | LINE UP COMING SOON…",
-    "June 15": "Monday, June 15 - 21:00 | Mondays | SECRET DJS & VERY SPECIAL GUESTS",
-    "June 16": "Tuesday, June 16 - 18:30 | Pikes Presents at 528 Ibiza | GERD JANSON B2B MARCEL DETTMANN • HORSE MEAT DISCO • PEACH • PIKES RESIDENT DJS",
-    "June 17": "Wednesday, June 17 - 21:00 | David Morales | DAVID MORALES & MORE",
-    "June 18": "Thursday, June 18 - 21:00 | Vitalik | RYAN O GORMAN + GUESTS",
-    "June 19": "Friday, June 19 - 21:00 | Pikes Sessions | COMING SOON…",
-    "June 20": "Saturday, June 20 - 21:00 | Pikes House Party | LINE UP COMING SOON…",
-    "June 21": "Sunday, June 21 - 21:00 | Sundays at Pikes | LINE UP COMING SOON…",
-    "June 22": "Monday, June 22 - 21:00 | Mondays | SECRET DJS & VERY SPECIAL GUESTS",
-    "June 23": "Tuesday, June 23 - 18:30 | Pikes Presents x Detroit Love at 528 Ibiza | CARL CRAIG • FLO REAL • MOODYMANN • RYAN O GORMAN • PIKES RESIDENT DJS",
-    "June 24": "Wednesday, June 24 - 21:00 | Disco Disco | UNANNOUNCED SPECIAL GUESTS & DISCO DISCO RESIDENT DJS",
-}
-
 PIKES_URL = "https://www.pikesibiza.com/whats-on/"
+
+# Baseline data for Jun 8-24
+BASELINE_DATA = {
+    "June 8": {
+        "time": "21:00",
+        "name": "Mondays",
+        "artists": "SECRET DJS & VERY SPECIAL GUESTS",
+        "slug": "mondays-08-06-2026"
+    },
+    "June 9": {
+        "time": "18:30",
+        "name": "Pikes Presents at 528 Ibiza",
+        "artists": "THE BLESSED MADONNA • DEMI RIQUÍSIMO • BUSHWACKA! • PIKES RESIDENT DJS",
+        "slug": "pikes-presents-at-528-ibiza-09-06-2026"
+    },
+    "June 10": {
+        "time": "21:00",
+        "name": "Pikes Sessions",
+        "artists": "COMING SOON…",
+        "slug": "pikes-sessions-10-06-2026"
+    },
+    "June 11": {
+        "time": "21:00",
+        "name": "Flash x Homoelectric Pride Special",
+        "artists": "GINA BREEZE • GUY WILLIAMS • JON JAK • S/A/M • THE MENENDEZ BROTHERS • JAEGEROSSA • HOST LUCY FIZZ",
+        "slug": "flash-x-homoelectric-pride-special-11-06-2026"
+    },
+    "June 12": {
+        "time": "21:00",
+        "name": "Pikes Sessions",
+        "artists": "HORSE MEAT DISCO • LAURA & SANTIAGO & MORE",
+        "slug": "pikes-sessions-12-06-2026"
+    },
+    "June 13": {
+        "time": "21:00",
+        "name": "Pikes House Party",
+        "artists": "LINE UP COMING SOON…",
+        "slug": "pikes-house-party-13-06-2026"
+    },
+    "June 14": {
+        "time": "21:00",
+        "name": "Sundays at Pikes",
+        "artists": "LINE UP COMING SOON…",
+        "slug": "sundays-at-pikes-14-06-2026"
+    },
+    "June 15": {
+        "time": "21:00",
+        "name": "Mondays",
+        "artists": "SECRET DJS & VERY SPECIAL GUESTS",
+        "slug": "mondays-15-06-2026"
+    },
+    "June 16": {
+        "time": "18:30",
+        "name": "Pikes Presents at 528 Ibiza",
+        "artists": "GERD JANSON B2B MARCEL DETTMANN • HORSE MEAT DISCO • PEACH • PIKES RESIDENT DJS",
+        "slug": "pikes-presents-at-528-ibiza-16-06-2026"
+    },
+    "June 17": {
+        "time": "21:00",
+        "name": "David Morales",
+        "artists": "DAVID MORALES & MORE",
+        "slug": "david-morales-17-06-2026"
+    },
+    "June 18": {
+        "time": "21:00",
+        "name": "Vitalik",
+        "artists": "RYAN O GORMAN + GUESTS",
+        "slug": "vitalik-18-06-2026"
+    },
+    "June 19": {
+        "time": "21:00",
+        "name": "Pikes Sessions",
+        "artists": "COMING SOON…",
+        "slug": "pikes-sessions-19-06-2026"
+    },
+    "June 20": {
+        "time": "21:00",
+        "name": "Pikes House Party",
+        "artists": "LINE UP COMING SOON…",
+        "slug": "pikes-house-party-20-06-2026"
+    },
+    "June 21": {
+        "time": "21:00",
+        "name": "Sundays at Pikes",
+        "artists": "LINE UP COMING SOON…",
+        "slug": "sundays-at-pikes-21-06-2026"
+    },
+    "June 22": {
+        "time": "21:00",
+        "name": "Mondays",
+        "artists": "SECRET DJS & VERY SPECIAL GUESTS",
+        "slug": "mondays-22-06-2026"
+    },
+    "June 23": {
+        "time": "18:30",
+        "name": "Pikes Presents x Detroit Love at 528 Ibiza",
+        "artists": "CARL CRAIG • FLO REAL • MOODYMANN • RYAN O GORMAN • PIKES RESIDENT DJS",
+        "slug": "pikes-presents-x-detroit-love-at-528-ibiza-23-06-2026"
+    },
+    "June 24": {
+        "time": "21:00",
+        "name": "Disco Disco",
+        "artists": "UNANNOUNCED SPECIAL GUESTS & DISCO DISCO RESIDENT DJS",
+        "slug": "disco-disco-24-06-2026"
+    },
+}
 
 def load_snapshot(filename="pikes_snapshot.json"):
     """Load previous snapshot"""
@@ -47,16 +133,29 @@ def save_snapshot(data, filename="pikes_snapshot.json"):
     with open(filename, 'w') as f:
         json.dump(data, f, indent=2)
 
+def format_value(val):
+    """Convert value to string - handle dict or string"""
+    if isinstance(val, dict):
+        # Old format
+        if 'name' in val:
+            return val.get('name', '')
+        return str(val)
+    return str(val)
+
 def detect_changes(current, previous):
     """Detect changes for Jun 8-24"""
     changes = {}
     
     for day in range(8, 25):
         date_key = f"June {day}"
-        current_val = current.get(date_key, "")
-        previous_val = previous.get(date_key, "")
+        current_val = current.get(date_key, {})
+        previous_val = previous.get(date_key, {})
         
-        if current_val != previous_val:
+        # Convert to comparable format
+        current_str = json.dumps(current_val, sort_keys=True) if isinstance(current_val, dict) else str(current_val)
+        previous_str = json.dumps(previous_val, sort_keys=True) if isinstance(previous_val, dict) else str(previous_val)
+        
+        if current_str != previous_str:
             changes[date_key] = {
                 "day": f"Jun {day}",
                 "before": previous_val if previous_val else "(New event)",
@@ -65,7 +164,7 @@ def detect_changes(current, previous):
     
     return changes
 
-def send_email(current_events, changes):
+def send_email(current_program, changes):
     """Send email"""
     import smtplib
     from email.mime.text import MIMEText
@@ -79,7 +178,7 @@ def send_email(current_events, changes):
         print("⚠️  Missing email credentials")
         return
     
-    # Build CURRENT LINEUP
+    # Build CURRENT LINEUP with event links
     current_html = f"""
 <p style="margin: 0 0 20px 0; text-align: center;">
     <a href="{PIKES_URL}" style="color: #ff6b9d; text-decoration: none; font-weight: bold; font-size: 14px;">
@@ -90,18 +189,36 @@ def send_email(current_events, changes):
     
     for day in range(8, 25):
         date = f"June {day}"
-        if date in current_events:
-            event = current_events[date]
-            event_lines = event.split(" | ")
+        if date in current_program:
+            event = current_program[date]
+            
+            # Handle both dict and string formats
+            if isinstance(event, dict):
+                time_str = event.get('time', '')
+                name = event.get('name', '')
+                artists = event.get('artists', '')
+                event_url = f"https://www.pikesibiza.com/event/{event.get('slug', '')}"
+            else:
+                # Old string format
+                parts = str(event).split(' | ')
+                time_str = parts[0] if len(parts) > 0 else ''
+                name = parts[1] if len(parts) > 1 else ''
+                artists = parts[2] if len(parts) > 2 else ''
+                event_url = None
             
             current_html += f"""
 <div style="margin: 12px 0; padding: 10px; background: #f9f9f9; border-left: 3px solid #ff6b9d; border-radius: 4px;">
-    <p style="margin: 0; font-weight: bold; color: #333; font-size: 13px;">• {date}</p>"""
+    <p style="margin: 0; font-weight: bold; color: #333; font-size: 13px;">
+        • {date} - {time_str}"""
             
-            for line in event_lines[:3]:
-                current_html += f'<p style="margin: 3px 0 0 0; font-size: 12px; color: #666;">• {line}</p>'
+            if event_url and event.get('slug'):
+                current_html += f' <a href="{event_url}" style="color: #ff6b9d; text-decoration: none; font-size: 11px;">🔗</a>'
             
-            current_html += "</div>"
+            current_html += f"""
+    </p>
+    <p style="margin: 3px 0 0 0; font-size: 12px; color: #666; font-weight: 500;">• {name}</p>
+    <p style="margin: 3px 0 0 0; font-size: 12px; color: #666;">• {artists}</p>
+</div>"""
     
     # Build WHAT CHANGED
     changes_html = ""
@@ -110,11 +227,20 @@ def send_email(current_events, changes):
             date = f"June {day}"
             if date in changes:
                 change = changes[date]
-                before_lines = change['before'].split(" | ")
-                after_lines = change['after'].split(" | ")
                 
-                before_html = "<br>".join(before_lines[:3])
-                after_html = "<br>".join(after_lines[:3])
+                # Format before
+                before_val = change['before']
+                if isinstance(before_val, dict):
+                    before_html = f"{before_val.get('name', '')} - {before_val.get('artists', '')}"
+                else:
+                    before_html = str(before_val)
+                
+                # Format after
+                after_val = change['after']
+                if isinstance(after_val, dict):
+                    after_html = f"{after_val.get('name', '')} - {after_val.get('artists', '')}"
+                else:
+                    after_html = str(after_val)
                 
                 changes_html += f"""
 <div style="margin: 15px 0; padding: 12px; background: #fef3c7; border-left: 3px solid #fbbf24; border-radius: 4px;">
@@ -180,7 +306,7 @@ def main():
     print(f"Start: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print("=" * 70 + "\n")
     
-    # Use baseline as current (monitoring will compare against previous snapshots)
+    # Use baseline as current
     current_program = BASELINE_DATA
     print(f"   📊 Monitoring: {len(current_program)} days (Jun 8-24)")
     
