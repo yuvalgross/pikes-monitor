@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 🎵 Pikes Ibiza Monitor
-Clean event extraction with readable before/after tracking (Jun 8-24)
+Tracks DJ lineups with detailed before/after (Jun 8-24)
 """
 
 import requests
@@ -10,56 +10,71 @@ import os
 import re
 from datetime import datetime
 
+PIKES_URL = "https://www.pikesibiza.com/en/program/"
+
 def fetch_pikes_program():
     """Fetch Pikes Ibiza program"""
     print("🌐 Fetching Pikes program...")
     
-    url = "https://www.pikesibiza.com/en/program/"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(PIKES_URL, headers=headers, timeout=15, allow_redirects=True)
+        print(f"   Status: {response.status_code}")
+        
         if response.status_code == 200:
             print(f"   ✅ Fetched {len(response.text):,} characters")
             return extract_events(response.text)
         else:
-            print(f"   ❌ Status {response.status_code}")
+            print(f"   ❌ Error: {response.status_code}")
             return {}
     except Exception as e:
         print(f"   ❌ Error: {e}")
         return {}
 
 def extract_events(html_content):
-    """Extract clean event data for Jun 8-24 only"""
+    """Extract events for Jun 8-24"""
+    from bs4 import BeautifulSoup
+    
     events = {}
     
-    # Only June 8-24
+    # Parse HTML
+    soup = BeautifulSoup(html_content, 'html.parser')
+    text = soup.get_text()
+    
+    # Extract June 8-24 events
     for day in range(8, 25):
-        date_str = f"June {day}"
+        # Look for date patterns
+        patterns = [
+            f"June {day}",
+            f"Jun {day}",
+        ]
         
-        if date_str in html_content:
-            idx = html_content.find(date_str)
-            if idx >= 0:
-                # Get context around date
-                start = max(0, idx - 100)
-                end = min(len(html_content), idx + 1200)
-                snippet = html_content[start:end]
+        for pattern in patterns:
+            if pattern in text:
+                # Find the date
+                idx = text.find(pattern)
                 
-                # Extract readable text (not HTML)
-                from bs4 import BeautifulSoup
-                soup = BeautifulSoup(snippet, 'html.parser')
-                text = soup.get_text(separator=" | ", strip=True)
+                # Get context (next 800 chars)
+                snippet = text[idx:idx+800]
                 
-                # Clean up
-                lines = [l.strip() for l in text.split('|') if l.strip() and len(l.strip()) > 3]
+                # Get first meaningful lines
+                lines = [l.strip() for l in snippet.split('\n') if l.strip() and len(l.strip()) > 3]
                 
-                # Get key lines (time, event name, artists)
-                event_text = " | ".join(lines[:4])
+                # Filter out noise
+                event_lines = []
+                for line in lines[:12]:
+                    # Skip if too long or looks like nav
+                    if len(line) < 200 and not any(x in line.lower() for x in ['home', 'privacy', 'accept', 'cookie']):
+                        event_lines.append(line)
                 
-                if event_text and len(event_text) > 10:
-                    events[date_str] = event_text
+                # Join first 3 meaningful lines
+                if event_lines:
+                    event_text = " | ".join(event_lines[:3])
+                    events[pattern] = event_text
+                    break
     
     return events
 
@@ -79,50 +94,41 @@ def save_snapshot(data, filename="pikes_snapshot.json"):
         json.dump(data, f, indent=2)
 
 def format_event(value):
-    """Format event text nicely - handles both string and dict"""
+    """Format event text - handle both string and dict"""
     if not value:
-        return "(No event listed)"
+        return "(No event info)"
     
-    # Handle dict (old format)
+    # Handle old dict format
     if isinstance(value, dict):
-        if 'events' in value:
-            events = value['events']
-            if isinstance(events, list):
-                return " | ".join(str(e) for e in events[:3])
+        if 'events' in value and isinstance(value['events'], list):
+            return " | ".join(str(e) for e in value['events'][:3])
         return str(value)
     
-    # Handle string
-    if isinstance(value, str):
-        text = value.replace(" | ", "\n")
-        return text
-    
-    return str(value)
+    # String format
+    return str(value).strip()
 
 def detect_changes(current, previous):
-    """Detect changes (Jun 8-24 only)"""
+    """Detect changes between snapshots"""
     changes = {}
     
-    # Get all June 8-24 dates in order
-    dates_to_check = [f"June {day}" for day in range(8, 25)]
-    
-    for date in dates_to_check:
-        current_val = current.get(date, "")
-        previous_val = previous.get(date, "")
+    # Check all June 8-24 dates
+    for day in range(8, 25):
+        date_key = f"June {day}"
+        current_val = current.get(date_key, "")
+        previous_val = previous.get(date_key, "")
         
+        # Compare
         if current_val != previous_val:
-            match = re.search(r"(\d+)", date)
-            day = match.group(1) if match else "?"
-            
-            changes[date] = {
+            changes[date_key] = {
                 "day": f"Jun {day}",
                 "before": format_event(previous_val) if previous_val else "(New event)",
-                "after": format_event(current_val) if current_val else "(Event removed)",
+                "after": format_event(current_val) if current_val else "(Event info not found)",
             }
     
     return changes
 
 def send_email(current_events, changes):
-    """Send email with current lineup + before/after changes"""
+    """Send email with lineup + changes"""
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -135,8 +141,15 @@ def send_email(current_events, changes):
         print("⚠️  Missing email credentials")
         return
     
-    # Build CURRENT LINEUP (Jun 8-24 only, in order)
-    current_html = ""
+    # Build CURRENT LINEUP (with website link)
+    current_html = f"""
+<p style="margin: 0 0 20px 0; text-align: center;">
+    <a href="{PIKES_URL}" style="color: #ff6b9d; text-decoration: none; font-weight: bold;">
+        🔗 View full program on Pikes website
+    </a>
+</p>
+"""
+    
     for day in range(8, 25):
         date = f"June {day}"
         if date in current_events:
@@ -152,15 +165,15 @@ def send_email(current_events, changes):
             
             current_html += "</div>"
     
-    # Build WHAT CHANGED (only Jun 8-24)
+    # Build WHAT CHANGED
     changes_html = ""
     if changes:
         for day in range(8, 25):
             date = f"June {day}"
             if date in changes:
                 change = changes[date]
-                before_lines = change['before'].split("\n")
-                after_lines = change['after'].split("\n")
+                before_lines = change['before'].split(" | ")
+                after_lines = change['after'].split(" | ")
                 
                 before_html = "<br>".join(before_lines[:3])
                 after_html = "<br>".join(after_lines[:3])
@@ -235,6 +248,7 @@ def main():
     
     # Load previous snapshot
     previous_program = load_snapshot()
+    print(f"   💾 Previous: {len(previous_program)} days")
     
     # Detect changes
     changes = detect_changes(current_program, previous_program)
@@ -242,10 +256,10 @@ def main():
     print(f"\n{'='*70}")
     if changes:
         print(f"🔄 CHANGES DETECTED ({len(changes)} dates)")
-        for date in sorted(changes.keys()):
-            match = re.search(r"(\d+)", date)
-            day = match.group(1) if match else "?"
-            print(f"  ✓ Jun {day}")
+        for day in range(8, 25):
+            date = f"June {day}"
+            if date in changes:
+                print(f"  ✓ Jun {day}")
     else:
         print("✅ No changes detected")
     print(f"{'='*70}\n")
