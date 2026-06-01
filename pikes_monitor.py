@@ -108,7 +108,7 @@ BASELINE_DATA = {
         "time": "18:30",
         "name": "Pikes Presents x Detroit Love at 528 Ibiza",
         "artists": "CARL CRAIG • FLO REAL • MOODYMANN • RYAN O GORMAN • PIKES RESIDENT DJS",
-        "slug": "pikes-presents-detroit-love-23-06-2026"
+        "slug": "pikes-presents-at-528-ibiza-23-06-2026"
     },
     "June 24": {
         "time": "21:00",
