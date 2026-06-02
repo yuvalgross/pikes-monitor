@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-🎵 Pikes Ibiza Monitor - Dynamic Web Scraping (What's-On Listing)
-Scrapes the Pikes what's-on listing page for all Jun 8-24 events
+🎵 Pikes Ibiza Monitor - Hybrid Scraping
+Scrapes BOTH individual event pages + what's-on listing page
+Gets data from whichever source has the most recent info
 """
 
 import requests
@@ -12,109 +13,195 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 PIKES_URL = "https://www.pikesibiza.com/whats-on/"
+PIKES_EVENT_BASE = "https://www.pikesibiza.com/event/"
 
-def scrape_pikes_events():
-    """Dynamically scrape Pikes what's-on listing page for all June 8-24 events"""
+def scrape_individual_event_pages():
+    """Scrape individual event pages (Jun 8-24)"""
+    events = {}
+    
+    # Known event slugs for Jun 8-24
+    slugs = [
+        "mondays-08-06-2026",
+        "pikes-presents-at-528-ibiza-09-06-2026",
+        "pikes-sessions-10-06-2026",
+        "flash-11-06-2026",
+        "pikes-sessions-12-06-2026",
+        "pikes-house-party-13-06-2026",
+        "sundays-at-pikes-14-06-2026",
+        "mondays-15-06-2026",
+        "pikes-presents-at-528-ibiza-16-06-2026",
+        "david-morales-17-06-2026",
+        "vitalik-18-06-2026",
+        "pikes-session-19-06-2026",
+        "pikes-house-party-20-06-2026",
+        "sundays-at-pikes-21-06-2026",
+        "mondays-22-06-2026",
+        "pikes-presents-at-528-ibiza-23-06-2026",
+        "disco-disco-24-06-2026",
+    ]
+    
+    for slug in slugs:
+        try:
+            url = f"{PIKES_EVENT_BASE}{slug}/"
+            response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+            
+            if response.status_code != 200:
+                continue
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Extract date from page
+            title = soup.find('h1')
+            if not title:
+                continue
+            
+            title_text = title.get_text(strip=True)
+            
+            # Extract date like "Wednesday 10 June 2026"
+            date_match = re.search(r'(\w+day),?\s+(\w+)\s+(\d+)', title_text)
+            if not date_match:
+                continue
+            
+            month, day = date_match.group(2), date_match.group(3)
+            day_int = int(day)
+            if day_int < 8 or day_int > 24 or month.lower() != 'june':
+                continue
+            
+            date_key = f"June {day}"
+            
+            # Extract event name and time from title
+            event_name = title_text.split("|")[0].strip()
+            
+            # Look for time in the page
+            time_text = "TBD"
+            time_match = re.search(r'(\d{1,2}:\d{2})', response.text)
+            if time_match:
+                time_text = time_match.group(1)
+            
+            # Extract lineup from the page
+            lineup_text = "Coming Soon…"
+            
+            # Look for "LINE UP" heading or similar
+            lineup_sections = soup.find_all(['h2', 'h3'], string=lambda x: x and 'LINE UP' in x.upper())
+            
+            if lineup_sections:
+                # Get text after the LINE UP heading
+                for section in lineup_sections:
+                    next_elem = section.find_next('p')
+                    if next_elem:
+                        potential_lineup = next_elem.get_text(strip=True)
+                        if potential_lineup and potential_lineup.lower() != 'coming soon':
+                            lineup_text = potential_lineup
+                            break
+            
+            # Fallback: search for artist names pattern
+            if lineup_text == "Coming Soon…":
+                text_content = soup.get_text()
+                # Look for patterns with • (bullet points indicating artists)
+                lineup_match = re.search(r'([A-Z][A-Z\s•&]+?)(?:\n|\.|View|Book|Get|Call)', text_content)
+                if lineup_match:
+                    potential = lineup_match.group(1).strip()
+                    if '•' in potential and len(potential) > 5:
+                        lineup_text = potential
+            
+            events[date_key] = {
+                "time": time_text,
+                "name": event_name,
+                "artists": lineup_text,
+                "slug": slug,
+                "source": "individual_page"
+            }
+        
+        except Exception as e:
+            continue
+    
+    return events
+
+def scrape_listing_page():
+    """Try to scrape what's-on listing page (may be incomplete due to JS)"""
     try:
         response = requests.get(PIKES_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
         
         events = {}
-        
-        # Find all event containers - looking for the event list items
-        # The what's-on page uses various class structures, so we look for date + event info
-        event_sections = soup.find_all(['article', 'div'], class_=lambda x: x and 'event' in x.lower() if x else False)
-        
-        if not event_sections:
-            # Alternative: find by heading + content patterns
-            event_sections = soup.find_all('div', class_='tribe-events-list-event-title')
-        
-        # More robust: find all links that point to /event/ URLs
         event_links = soup.find_all('a', href=re.compile(r'/event/[^/]+/'))
         
         for link in event_links:
             try:
-                # Get the event URL and extract slug
                 event_url = link.get('href')
-                if not event_url:
-                    continue
-                
                 slug_match = re.search(r'/event/([^/]+)/', event_url)
                 if not slug_match:
                     continue
                 
                 slug = slug_match.group(1)
-                event_name = link.get_text(strip=True)
                 
-                # Find the nearest date info (look in parent elements)
+                # Find date info from parent
                 parent = link.find_parent()
                 date_text = None
-                time_text = None
-                artists_text = None
                 
-                # Traverse up to find date and artist info
                 for ancestor in link.parents:
-                    # Look for date patterns like "Wednesday, June 10"
-                    text_content = ancestor.get_text(strip=True)
-                    date_match = re.search(r'(\w+day),\s+(\w+)\s+(\d+)', text_content)
+                    text = ancestor.get_text(strip=True)
+                    date_match = re.search(r'(\w+day),\s+(\w+)\s+(\d+)', text)
                     if date_match:
                         month, day = date_match.group(2), date_match.group(3)
-                        # Only process Jun 8-24
-                        day_int = int(day)
-                        if day_int >= 8 and day_int <= 24 and month.lower() == 'june':
-                            date_text = f"{month} {day}"
-                        break
+                        if 8 <= int(day) <= 24 and month.lower() == 'june':
+                            date_text = f"June {day}"
+                            break
                 
                 if not date_text:
                     continue
                 
-                # Extract time (look for time pattern like "21:00" or "18:30")
-                time_match = re.search(r'(\d{1,2}:\d{2})', event_name)
-                if time_match:
-                    time_text = time_match.group(1)
-                    event_name = event_name.replace(time_text, '').strip()
+                event_name = link.get_text(strip=True)
                 
-                # Find artists/lineup in the article/container
-                article = link.find_parent('article') or link.find_parent('div', class_=lambda x: x and 'event' in x.lower() if x else False)
-                if article:
-                    # Get all text after event name that looks like artists
-                    all_text = article.get_text('|', strip=True)
-                    parts = [p.strip() for p in all_text.split('|')]
-                    
-                    # Find the part that contains artist names (usually after title)
-                    for i, part in enumerate(parts):
-                        if event_name in part and i + 1 < len(parts):
-                            artists_text = parts[i + 1]
+                # Extract time
+                time_match = re.search(r'(\d{1,2}:\d{2})', event_name)
+                time_text = time_match.group(1) if time_match else "TBD"
+                
+                # Get artists from card
+                card = link.find_parent('article') or link.find_parent('div')
+                artists = "Coming Soon…"
+                
+                if card:
+                    text_parts = card.get_text('|', strip=True).split('|')
+                    for i, part in enumerate(text_parts):
+                        if part.strip() and '•' in part:
+                            artists = part.strip()
                             break
                 
-                if not artists_text:
-                    artists_text = "Coming Soon…"
-                
-                if not time_text:
-                    time_text = "TBD"
-                
-                # Store the event
-                if date_text not in events:
-                    events[date_text] = {
-                        "time": time_text,
-                        "name": event_name,
-                        "artists": artists_text,
-                        "slug": slug,
-                        "url": event_url
-                    }
-            
-            except Exception as e:
+                events[date_text] = {
+                    "time": time_text,
+                    "name": event_name,
+                    "artists": artists,
+                    "slug": slug,
+                    "source": "listing_page"
+                }
+            except:
                 continue
         
-        return events if events else None
+        return events
+    except:
+        return {}
+
+def merge_events(individual_events, listing_events):
+    """Merge data from both sources (prefer listing if available and non-empty)"""
+    merged = {}
     
-    except Exception as e:
-        print(f"❌ Scraping error: {e}")
-        return None
+    # Start with individual events (reliable)
+    merged.update(individual_events)
+    
+    # Overlay with listing data (prefer if it has better info)
+    for date, listing_data in listing_events.items():
+        if date in merged:
+            # Prefer listing data if it has more detailed artist info
+            if listing_data.get('artists') != "Coming Soon…" and listing_data.get('artists') != "LINE UP COMING SOON…":
+                merged[date]['artists'] = listing_data['artists']
+                merged[date]['source'] = "listing_page (primary)"
+        else:
+            merged[date] = listing_data
+    
+    return merged
 
 def load_snapshot(filename="pikes_snapshot.json"):
-    """Load previous snapshot"""
     if os.path.exists(filename):
         try:
             with open(filename, 'r') as f:
@@ -124,12 +211,10 @@ def load_snapshot(filename="pikes_snapshot.json"):
     return {}
 
 def save_snapshot(data, filename="pikes_snapshot.json"):
-    """Save current snapshot"""
     with open(filename, 'w') as f:
         json.dump(data, f, indent=2)
 
 def detect_changes(current, previous):
-    """Compare current and previous snapshots"""
     changes = {}
     for day in range(8, 25):
         date_key = f"June {day}"
@@ -139,8 +224,7 @@ def detect_changes(current, previous):
         current_val = current[date_key]
         previous_val = previous.get(date_key, {})
         
-        # Compare as JSON strings
-        current_str = json.dumps(current_val, sort_keys=True)
+        current_str = json.dumps({k: v for k, v in current_val.items() if k != 'source'}, sort_keys=True)
         previous_str = json.dumps(previous_val, sort_keys=True)
         
         if current_str != previous_str:
@@ -153,7 +237,6 @@ def detect_changes(current, previous):
     return changes
 
 def send_email(current_program, changes):
-    """Send notification email"""
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -163,10 +246,8 @@ def send_email(current_program, changes):
     RECIPIENT = os.getenv("NOTIFY_EMAIL")
     
     if not all([EMAIL, PASSWORD, RECIPIENT]):
-        print("⚠️  Missing email credentials")
         return
     
-    # Build changelog
     changelog = ""
     if changes:
         changelog = '<div style="background: #fef3c7; border: 1px solid #fcd34d; padding: 16px; border-radius: 8px; margin-bottom: 24px;">'
@@ -178,24 +259,19 @@ def send_email(current_program, changes):
         changelog += '</div></div>'
     
     current_html = '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto; max-width: 600px; margin: 0 auto;">'
-    
-    # Header
     current_html += '<div style="background: linear-gradient(135deg, #d946a6 0%, #ec4899 100%); color: white; padding: 40px 24px; text-align: center; border-radius: 12px 12px 0 0;">'
     current_html += '<h1 style="margin: 0; font-size: 28px; font-weight: 600;">🎵 Pikes Ibiza</h1>'
     current_html += '<p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Lineup Updates • June 2026</p>'
     current_html += '</div>'
-    
     current_html += '<div style="padding: 24px;">'
     current_html += changelog
     
-    # Events
     for day in range(8, 25):
         date = f"June {day}"
         if date not in current_program:
             continue
         
         event = current_program[date]
-        
         time_str = event.get('time', '')
         name = event.get('name', '')
         artists = event.get('artists', '')
@@ -206,7 +282,7 @@ def send_email(current_program, changes):
         bg_color = "#fff5f9" if has_change else "var(--color-background-primary)"
         border_color = "#ec4899" if has_change else "var(--color-border-tertiary)"
         
-        event_link = f' <a href="{event_url}" style="color: #ec4899; text-decoration: none; font-size: 12px; font-weight: 500;">🔗 Open event</a>' if event_url else ''
+        event_link = f' <a href="{event_url}" style="color: #ec4899; text-decoration: none; font-size: 12px; font-weight: 500;">🔗</a>' if event_url else ''
         
         current_html += f'<div style="border: 0.5px solid {border_color}; border-radius: 8px; padding: 16px; margin-bottom: 12px; background: {bg_color};">'
         current_html += f'<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">'
@@ -226,20 +302,15 @@ def send_email(current_program, changes):
                 if before_artists and after_artists and before_artists != after_artists:
                     current_html += '<div style="background: white; border: 0.5px solid #fecdd3; border-radius: 4px; padding: 10px; margin-top: 12px; font-size: 12px;">'
                     current_html += '<div style="color: #831843; font-weight: 600; margin-bottom: 4px;">🔄 LINEUP UPDATED</div>'
-                    current_html += f'<div style="color: #999; margin-bottom: 4px; text-decoration: line-through;">Before: {before_artists}</div>'
-                    current_html += f'<div style="color: #ec4899; font-weight: 500;">After: {after_artists}</div>'
+                    current_html += f'<div style="color: #999; margin-bottom: 4px; text-decoration: line-through;">Before: {before_artists[:70]}</div>'
+                    current_html += f'<div style="color: #ec4899; font-weight: 500;">After: {after_artists[:70]}</div>'
                     current_html += '</div>'
         
         current_html += '</div>'
     
-    current_html += '</div>'
-    
-    # Footer
-    current_html += '<div style="border-top: 0.5px solid #e0e0e0; padding: 16px 24px; text-align: center; font-size: 12px; color: #999;">'
-    current_html += '<p style="margin: 0;">Monitor running every 48 hours through June 25</p>'
-    current_html += '<a href="https://www.pikesibiza.com/whats-on/" style="color: #ec4899; text-decoration: none; font-weight: 600; display: inline-block; margin-top: 12px;">View all events →</a>'
-    current_html += '</div>'
-    current_html += '</div>'
+    current_html += '</div><div style="border-top: 0.5px solid #e0e0e0; padding: 16px 24px; text-align: center; font-size: 12px; color: #999;">'
+    current_html += '<p style="margin: 0;">Dual-source monitoring (pages + listing) every 48h</p>'
+    current_html += '</div></div>'
     
     msg = MIMEMultipart("alternative")
     msg["Subject"] = "🎵 Pikes Ibiza Lineup Updates"
@@ -259,26 +330,27 @@ def send_email(current_program, changes):
 
 def main():
     print("=" * 70)
-    print("🎵 PIKES IBIZA MONITOR (What's-On Listing Scraper)")
+    print("🎵 PIKES IBIZA MONITOR (Hybrid: Individual Pages + Listing)")
     print("=" * 70)
     print(f"Start: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print("=" * 70 + "\n")
     
-    # Scrape website
-    print("🌐 Scraping Pikes what's-on listing...")
-    current_program = scrape_pikes_events()
+    print("🔗 Scraping individual event pages (Jun 8-24)...")
+    individual_events = scrape_individual_event_pages()
+    print(f"✅ Found {len(individual_events)} from individual pages")
     
-    if not current_program:
-        print("❌ Failed to scrape website, using fallback...")
-        current_program = load_snapshot()
-    else:
-        print(f"✅ Found {len(current_program)} events")
+    print("📄 Scraping what's-on listing page...")
+    listing_events = scrape_listing_page()
+    print(f"✅ Found {len(listing_events)} from listing page")
     
-    # Load previous snapshot
+    # Merge both sources
+    current_program = merge_events(individual_events, listing_events)
+    print(f"✅ Merged: {len(current_program)} total events")
+    
+    # Load previous and detect changes
     previous_program = load_snapshot()
-    print(f"💾 Previous snapshot: {len(previous_program)} events")
+    print(f"💾 Previous: {len(previous_program)} events")
     
-    # Detect changes
     changes = detect_changes(current_program, previous_program)
     
     print(f"\n{'='*70}")
@@ -290,12 +362,15 @@ def main():
         print("✅ No changes detected")
     print(f"{'='*70}\n")
     
-    # Save snapshot
-    save_snapshot(current_program)
+    # Clean data for snapshot (remove source field)
+    clean_program = {}
+    for date, data in current_program.items():
+        clean_program[date] = {k: v for k, v in data.items() if k != 'source'}
     
-    # Send email if there are changes or if this is the first run
+    save_snapshot(clean_program)
+    
     if not previous_program or changes:
-        send_email(current_program, changes)
+        send_email(clean_program, changes)
     else:
         print("✅ Silent check - no email (no changes)")
 
