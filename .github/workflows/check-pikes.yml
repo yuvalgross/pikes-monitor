@@ -2,7 +2,7 @@ name: Check Pikes Events
 
 on:
   schedule:
-    - cron: '0 10 */2 * *'
+    - cron: '0 10 * * *'
   workflow_dispatch:
 
 jobs:
