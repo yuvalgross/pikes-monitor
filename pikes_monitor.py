@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-🎵 Pikes Ibiza Monitor - Dynamic Web Scraping
-Scrapes the Pikes website in real-time for all Jun 8-24 events
+🎵 Pikes Ibiza Monitor - Dynamic Web Scraping (What's-On Listing)
+Scrapes the Pikes what's-on listing page for all Jun 8-24 events
 """
 
 import requests
@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 PIKES_URL = "https://www.pikesibiza.com/whats-on/"
 
 def scrape_pikes_events():
-    """Dynamically scrape Pikes website for all June 8-24 events"""
+    """Dynamically scrape Pikes what's-on listing page for all June 8-24 events"""
     try:
         response = requests.get(PIKES_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         response.raise_for_status()
@@ -22,60 +22,90 @@ def scrape_pikes_events():
         
         events = {}
         
-        # Find all event cards
-        event_cards = soup.find_all('div', class_='tribe-events-calendar-list__event')
+        # Find all event containers - looking for the event list items
+        # The what's-on page uses various class structures, so we look for date + event info
+        event_sections = soup.find_all(['article', 'div'], class_=lambda x: x and 'event' in x.lower() if x else False)
         
-        for card in event_cards:
-            # Extract date
-            date_elem = card.find('span', class_='tribe-event-date-start')
-            if not date_elem:
-                continue
-            
-            date_text = date_elem.get_text(strip=True)
-            # Parse "June 8" from date text
-            match = re.search(r'(\w+)\s+(\d+)', date_text)
-            if not match:
-                continue
-            
-            month, day = match.groups()
-            date_key = f"{month} {day}"
-            
-            # Only process Jun 8-24
-            day_int = int(day)
-            if day_int < 8 or day_int > 24:
-                continue
-            
-            # Extract event name
-            name_elem = card.find('h3', class_='tribe-events-list-event-title')
-            event_name = name_elem.get_text(strip=True) if name_elem else "Unknown"
-            
-            # Extract time
-            time_elem = card.find('span', class_='tribe-event-time')
-            event_time = time_elem.get_text(strip=True) if time_elem else "TBD"
-            
-            # Extract artists/lineup
-            desc_elem = card.find('div', class_='tribe-events-list-event-description')
-            artists = desc_elem.get_text(strip=True) if desc_elem else "COMING SOON…"
-            
-            # Extract event URL/slug
-            link_elem = card.find('a', class_='tribe-events-list-event-title-link')
-            event_url = link_elem.get('href') if link_elem else None
-            
-            # Extract slug from URL
-            slug = None
-            if event_url:
-                # URL format: https://www.pikesibiza.com/event/{slug}/
+        if not event_sections:
+            # Alternative: find by heading + content patterns
+            event_sections = soup.find_all('div', class_='tribe-events-list-event-title')
+        
+        # More robust: find all links that point to /event/ URLs
+        event_links = soup.find_all('a', href=re.compile(r'/event/[^/]+/'))
+        
+        for link in event_links:
+            try:
+                # Get the event URL and extract slug
+                event_url = link.get('href')
+                if not event_url:
+                    continue
+                
                 slug_match = re.search(r'/event/([^/]+)/', event_url)
-                slug = slug_match.group(1) if slug_match else None
+                if not slug_match:
+                    continue
+                
+                slug = slug_match.group(1)
+                event_name = link.get_text(strip=True)
+                
+                # Find the nearest date info (look in parent elements)
+                parent = link.find_parent()
+                date_text = None
+                time_text = None
+                artists_text = None
+                
+                # Traverse up to find date and artist info
+                for ancestor in link.parents:
+                    # Look for date patterns like "Wednesday, June 10"
+                    text_content = ancestor.get_text(strip=True)
+                    date_match = re.search(r'(\w+day),\s+(\w+)\s+(\d+)', text_content)
+                    if date_match:
+                        month, day = date_match.group(2), date_match.group(3)
+                        # Only process Jun 8-24
+                        day_int = int(day)
+                        if day_int >= 8 and day_int <= 24 and month.lower() == 'june':
+                            date_text = f"{month} {day}"
+                        break
+                
+                if not date_text:
+                    continue
+                
+                # Extract time (look for time pattern like "21:00" or "18:30")
+                time_match = re.search(r'(\d{1,2}:\d{2})', event_name)
+                if time_match:
+                    time_text = time_match.group(1)
+                    event_name = event_name.replace(time_text, '').strip()
+                
+                # Find artists/lineup in the article/container
+                article = link.find_parent('article') or link.find_parent('div', class_=lambda x: x and 'event' in x.lower() if x else False)
+                if article:
+                    # Get all text after event name that looks like artists
+                    all_text = article.get_text('|', strip=True)
+                    parts = [p.strip() for p in all_text.split('|')]
+                    
+                    # Find the part that contains artist names (usually after title)
+                    for i, part in enumerate(parts):
+                        if event_name in part and i + 1 < len(parts):
+                            artists_text = parts[i + 1]
+                            break
+                
+                if not artists_text:
+                    artists_text = "Coming Soon…"
+                
+                if not time_text:
+                    time_text = "TBD"
+                
+                # Store the event
+                if date_text not in events:
+                    events[date_text] = {
+                        "time": time_text,
+                        "name": event_name,
+                        "artists": artists_text,
+                        "slug": slug,
+                        "url": event_url
+                    }
             
-            if date_key not in events:
-                events[date_key] = {
-                    "time": event_time,
-                    "name": event_name,
-                    "artists": artists,
-                    "slug": slug,
-                    "url": event_url
-                }
+            except Exception as e:
+                continue
         
         return events if events else None
     
@@ -229,18 +259,17 @@ def send_email(current_program, changes):
 
 def main():
     print("=" * 70)
-    print("🎵 PIKES IBIZA MONITOR (Web Scraping)")
+    print("🎵 PIKES IBIZA MONITOR (What's-On Listing Scraper)")
     print("=" * 70)
     print(f"Start: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print("=" * 70 + "\n")
     
     # Scrape website
-    print("🌐 Scraping Pikes website...")
+    print("🌐 Scraping Pikes what's-on listing...")
     current_program = scrape_pikes_events()
     
     if not current_program:
         print("❌ Failed to scrape website, using fallback...")
-        # Fallback to hardcoded baseline if scraping fails
         current_program = load_snapshot()
     else:
         print(f"✅ Found {len(current_program)} events")
